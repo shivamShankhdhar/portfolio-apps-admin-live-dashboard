@@ -14,6 +14,7 @@ import {
 import { FaGamepad } from 'react-icons/fa6';
 import { AppItem } from '@/lib/defaultData';
 import AppModalForm from './AppModalForm';
+import AppIcon from '../ui/AppIcon';
 import { toast } from 'sonner';
 
 interface AppsManagerProps {
@@ -200,8 +201,8 @@ export default function AppsManager({
                 {/* Header Row */}
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-center gap-3.5">
-                    <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-red-600/20 to-rose-600/20 border border-red-500/30 flex items-center justify-center text-2xl shadow-inner shrink-0">
-                      {app.icon || '🎮'}
+                    <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-red-600/20 to-rose-600/20 border border-red-500/30 flex items-center justify-center shadow-inner shrink-0">
+                      <AppIcon title={app.title} category={app.category} iconString={app.icon} className="h-6 w-6" />
                     </div>
                     <div>
                       <h3 className="text-base font-bold text-white flex items-center gap-2">
