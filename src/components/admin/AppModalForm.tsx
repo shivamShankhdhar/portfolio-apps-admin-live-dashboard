@@ -1,7 +1,5 @@
-'use client';
-
 import React, { useState, useEffect } from 'react';
-import { FiX, FiCheck, FiPlus, FiTrash2 } from 'react-icons/fi';
+import { FiX, FiCheck, FiPlus, FiTrash2, FiDownload, FiShield, FiExternalLink } from 'react-icons/fi';
 import { AppItem, AppFeature } from '@/lib/defaultData';
 import { toast } from 'sonner';
 
@@ -10,6 +8,7 @@ interface AppModalFormProps {
   onClose: () => void;
   onSave: (app: Partial<AppItem>) => Promise<void>;
   initialData?: AppItem | null;
+  defaultCategory?: string;
 }
 
 export default function AppModalForm({
@@ -17,12 +16,13 @@ export default function AppModalForm({
   onClose,
   onSave,
   initialData,
+  defaultCategory = 'Games',
 }: AppModalFormProps) {
   const [formData, setFormData] = useState<Partial<AppItem>>({
     title: '',
     subtitle: '',
     tagline: '',
-    category: 'Games',
+    category: defaultCategory || 'Games',
     package: '',
     version: 'v1.0.0',
     status: 'Google Play Production',
@@ -31,10 +31,18 @@ export default function AppModalForm({
     icon: '🎮',
     bannerType: 'default',
     playStoreUrl: '',
+    playConsoleUrl: '',
     playStoreStatus: 'Google Play Production',
     appStoreUrl: '',
     appStoreStatus: 'Coming Soon',
     privacyUrl: '',
+    downloadsTier: '10K+ Installs',
+    contentRating: 'Rated for 3+',
+    playProtectVerified: true,
+    releaseTrack: 'Google Play Production Track',
+    featureGraphic: '',
+    whatsNew: '',
+    playScreenshots: [],
     technologies: [],
     highlights: [],
     features: [],
@@ -42,6 +50,8 @@ export default function AppModalForm({
     order: 1,
   });
 
+  const [playSyncInput, setPlaySyncInput] = useState('');
+  const [isFetchingPlay, setIsFetchingPlay] = useState(false);
   const [techInput, setTechInput] = useState('');
   const [highlightsInput, setHighlightsInput] = useState('');
   const [featurePairs, setFeaturePairs] = useState<AppFeature[]>([]);
@@ -58,14 +68,14 @@ export default function AppModalForm({
         title: '',
         subtitle: '',
         tagline: '',
-        category: 'Games',
+        category: defaultCategory || 'Games',
         package: '',
         version: 'v1.0.0',
         status: 'Closed Testing',
         rating: 'Coming Soon',
-        ratingCount: 'Testing Phase',
-        icon: '🎲',
-        bannerType: 'ludo',
+        ratingCount: (defaultCategory || '').toLowerCase() === 'apps' ? '10K+ Users' : 'Testing Phase',
+        icon: (defaultCategory || '').toLowerCase() === 'apps' ? '📱' : '🎮',
+        bannerType: (defaultCategory || '').toLowerCase() === 'apps' ? 'default' : 'ludo',
         playStoreUrl: '',
         playStoreStatus: 'Closed Testing Track',
         appStoreUrl: '',
@@ -100,6 +110,60 @@ export default function AppModalForm({
     const updated = [...featurePairs];
     updated[idx][field] = val;
     setFeaturePairs(updated);
+  };
+
+  const handleFetchPlayStore = async () => {
+    const target = playSyncInput.trim() || formData.playStoreUrl?.trim() || formData.package?.trim();
+    if (!target) {
+      toast.error('Enter a Google Play Store URL or Android package name first.');
+      return;
+    }
+
+    setIsFetchingPlay(true);
+    try {
+      const res = await fetch('/api/apps/fetch-play-store', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: target, package: target }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Could not fetch Play Store assets');
+      }
+
+      const p = data.data;
+      setFormData((prev) => ({
+        ...prev,
+        title: p.title || prev.title,
+        tagline: p.tagline || prev.tagline,
+        package: p.package || prev.package,
+        icon: p.icon || prev.icon,
+        rating: p.rating || prev.rating,
+        ratingCount: p.ratingCount || prev.ratingCount,
+        downloadsTier: p.downloadsTier || prev.downloadsTier,
+        contentRating: p.contentRating || prev.contentRating,
+        featureGraphic: p.featureGraphic || prev.featureGraphic,
+        playScreenshots: p.playScreenshots?.length ? p.playScreenshots : prev.playScreenshots,
+        whatsNew: p.whatsNew || prev.whatsNew,
+        playStoreUrl: p.playStoreUrl || prev.playStoreUrl,
+        playConsoleUrl: p.playConsoleUrl || prev.playConsoleUrl,
+        playProtectVerified: p.playProtectVerified !== undefined ? p.playProtectVerified : true,
+        releaseTrack: p.releaseTrack || prev.releaseTrack,
+        status: p.status || prev.status,
+        playStoreStatus: p.playStoreStatus || prev.playStoreStatus,
+      }));
+
+      toast.success(
+        data.source === 'play_store_live'
+          ? 'Live Play Store assets & telemetry extracted successfully!'
+          : 'Play Console testing track links configured!'
+      );
+    } catch (err: any) {
+      toast.error(err.message || 'Error fetching Play Store details');
+    } finally {
+      setIsFetchingPlay(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -153,6 +217,49 @@ export default function AppModalForm({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+          
+          {/* Google Play Asset Extractor Card */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-black/40 to-slate-900/60 border border-emerald-500/30 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-xs font-bold text-white uppercase tracking-wider">
+                  Google Play & Play Console Asset Sync
+                </span>
+              </div>
+              <span className="text-[10px] font-mono text-emerald-400">One-Click Auto Extractor</span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Paste a Google Play Store URL, Play Console testing URL, or Android Package ID to auto-fetch icon, feature graphic, screenshots, rating, installs, and release notes.
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={playSyncInput}
+                onChange={(e) => setPlaySyncInput(e.target.value)}
+                placeholder="e.g. https://play.google.com/store/apps/details?id=chess.binge or chess.binge"
+                className="flex-1 px-3.5 py-2 rounded-xl bg-black/60 border border-white/10 text-white text-xs font-mono focus:outline-none focus:border-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={handleFetchPlayStore}
+                disabled={isFetchingPlay}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 transition-all shadow-md shadow-emerald-600/30 disabled:opacity-50 cursor-pointer shrink-0"
+              >
+                {isFetchingPlay ? (
+                  <>
+                    <div className="h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Extracting...</span>
+                  </>
+                ) : (
+                  <>
+                    <FiDownload className="h-3.5 w-3.5" />
+                    <span>Fetch Store Assets</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -413,6 +520,117 @@ export default function AppModalForm({
                 placeholder="/apps/games/ludo-binge/privacy-policy"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-red-500 text-xs font-mono"
               />
+            </div>
+          </div>
+
+          {/* Play Console & Live Store Telemetry */}
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-950/20 to-black/40 border border-emerald-500/20 space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              <span className="text-xs font-mono uppercase tracking-wider text-emerald-400 font-bold flex items-center gap-1.5">
+                <span>Google Play Console Telemetry &amp; Badges</span>
+              </span>
+              <span className="text-[10px] font-mono text-emerald-500/80 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">Play Protect &amp; Analytics</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
+                  Play Console Testing / Opt-in URL
+                </label>
+                <input
+                  type="url"
+                  value={formData.playConsoleUrl || ''}
+                  onChange={(e) => setFormData({ ...formData, playConsoleUrl: e.target.value })}
+                  placeholder="https://play.google.com/apps/testing/..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500 text-xs font-mono"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">Direct opt-in link for closed/internal testers</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
+                  Release Track
+                </label>
+                <select
+                  value={formData.releaseTrack || 'Google Play Production Track'}
+                  onChange={(e) => setFormData({ ...formData, releaseTrack: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#181926] border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="Google Play Production Track">Google Play Production Track</option>
+                  <option value="Closed Testing Track">Closed Testing Track</option>
+                  <option value="Open Testing (Beta) Track">Open Testing (Beta) Track</option>
+                  <option value="Internal Test Track">Internal Test Track</option>
+                  <option value="Early Access Preview">Early Access Preview</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
+                  Downloads Milestone Tier
+                </label>
+                <input
+                  type="text"
+                  value={formData.downloadsTier || ''}
+                  onChange={(e) => setFormData({ ...formData, downloadsTier: e.target.value })}
+                  placeholder="e.g. 10K+ Installs or 50,000+ Downloads"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500 text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
+                  Content Rating
+                </label>
+                <input
+                  type="text"
+                  value={formData.contentRating || ''}
+                  onChange={(e) => setFormData({ ...formData, contentRating: e.target.value })}
+                  placeholder="Rated for 3+ / Everyone / Teen"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500 text-xs"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
+                Feature Graphic Banner URL (1024x500)
+              </label>
+              <input
+                type="url"
+                value={formData.featureGraphic || ''}
+                onChange={(e) => setFormData({ ...formData, featureGraphic: e.target.value })}
+                placeholder="https://... or promo art banner URL"
+                className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500 text-xs font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
+                What&apos;s New in this Release (Changelog)
+              </label>
+              <textarea
+                rows={2}
+                value={formData.whatsNew || ''}
+                onChange={(e) => setFormData({ ...formData, whatsNew: e.target.value })}
+                placeholder="e.g. Added real-time 60 FPS multiplayer sync, enhanced touch response, optimized bundle size..."
+                className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-emerald-500 text-xs font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={formData.playProtectVerified !== false}
+                  onChange={(e) => setFormData({ ...formData, playProtectVerified: e.target.checked })}
+                  className="w-4 h-4 rounded text-emerald-500 focus:ring-emerald-500 focus:ring-offset-black bg-black/40 border-white/20"
+                />
+                <span className="text-xs font-semibold text-emerald-300">
+                  Display &quot;Verified by Google Play Protect&quot; badge on website
+                </span>
+              </label>
             </div>
           </div>
 

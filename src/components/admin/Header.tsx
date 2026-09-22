@@ -1,7 +1,9 @@
 'use client';
 
 import React from 'react';
-import { FiPlus, FiDatabase, FiRefreshCw } from 'react-icons/fi';
+import Link from 'next/link';
+import { FiPlus, FiDatabase, FiRefreshCw, FiShield } from 'react-icons/fi';
+import { SidebarTrigger } from '@/components/ui/sidebar';
 import { AdminTab } from './Sidebar';
 
 interface HeaderProps {
@@ -11,12 +13,18 @@ interface HeaderProps {
   onAddNew?: () => void;
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  onOpenSecurity?: () => void;
+  twoFactorEnabled?: boolean;
 }
 
 const tabTitles: Record<AdminTab, { title: string; subtitle: string }> = {
   apps: {
-    title: 'Apps & Games Hub Management',
-    subtitle: 'Manage production apps, closed testing games, versions, and store links in MongoDB.',
+    title: 'Mobile Applications Management',
+    subtitle: 'Manage production mobile apps, releases, and store packages in MongoDB.',
+  },
+  games: {
+    title: 'Mobile Games & Play Store Hub',
+    subtitle: 'Manage gaming titles, closed testing tracks, game versions, and play console assets.',
   },
   projects: {
     title: 'Portfolio Projects Management',
@@ -51,17 +59,22 @@ export default function Header({
   onAddNew,
   onRefresh,
   isRefreshing = false,
+  onOpenSecurity,
+  twoFactorEnabled = false,
 }: HeaderProps) {
   const current = tabTitles[activeTab] || { title: 'Dashboard', subtitle: '' };
-  const canAddNew = ['apps', 'projects', 'skills', 'experience', 'education'].includes(activeTab);
+  const canAddNew = ['apps', 'games', 'projects', 'skills', 'experience', 'education'].includes(activeTab);
 
   return (
     <header className="px-8 py-6 border-b border-red-500/20 bg-[#0d0e17]/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-4">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-          {current.title}
-        </h1>
-        <p className="text-xs text-slate-400 mt-1">{current.subtitle}</p>
+      <div className="flex items-center gap-3">
+        <SidebarTrigger className="md:hidden text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-xl border border-white/10 shrink-0" />
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+            {current.title}
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">{current.subtitle}</p>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
@@ -82,6 +95,20 @@ export default function Header({
           />
           <span>{dbConnected ? 'Atlas DB Active' : 'Connecting...'}</span>
         </div>
+
+        {/* Settings & 2FA Route Link */}
+        <Link
+          href="/settings"
+          className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-mono font-semibold border transition-all cursor-pointer ${
+            twoFactorEnabled
+              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20'
+              : 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20'
+          }`}
+          title="Admin Settings & Security Controls (/settings)"
+        >
+          <FiShield className="h-3.5 w-3.5" />
+          <span>{twoFactorEnabled ? '2FA Enforced' : 'Settings & 2FA'}</span>
+        </Link>
 
         {/* Refresh Button */}
         {onRefresh && (

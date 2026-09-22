@@ -22,6 +22,7 @@ interface AppsManagerProps {
   onReload: () => void;
   isModalOpen: boolean;
   setIsModalOpen: (open: boolean) => void;
+  mode?: 'apps' | 'games';
 }
 
 export default function AppsManager({
@@ -29,6 +30,7 @@ export default function AppsManager({
   onReload,
   isModalOpen,
   setIsModalOpen,
+  mode,
 }: AppsManagerProps) {
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'All' | 'Games' | 'Apps'>('All');
@@ -36,12 +38,17 @@ export default function AppsManager({
   const [editingApp, setEditingApp] = useState<AppItem | null>(null);
 
   const filteredApps = apps.filter((app) => {
+    const isGame = (app.category || '').toLowerCase() === 'games';
+    if (mode === 'apps' && isGame) return false;
+    if (mode === 'games' && !isGame) return false;
+
     const matchesSearch =
       app.title.toLowerCase().includes(search.toLowerCase()) ||
       app.package.toLowerCase().includes(search.toLowerCase()) ||
       (app.subtitle && app.subtitle.toLowerCase().includes(search.toLowerCase()));
 
     const matchesCategory =
+      mode !== undefined ||
       categoryFilter === 'All' ||
       app.category.toLowerCase() === categoryFilter.toLowerCase();
 
@@ -136,29 +143,37 @@ export default function AppsManager({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by title or package..."
+            placeholder={
+              mode === 'apps'
+                ? 'Search applications by title or package...'
+                : mode === 'games'
+                ? 'Search games by title or package...'
+                : 'Search by title or package...'
+            }
             className="w-full pl-10 pr-4 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-red-500"
           />
         </div>
 
         {/* Filters */}
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          {/* Category Tabs */}
-          <div className="flex items-center rounded-xl bg-black/40 p-1 border border-white/10">
-            {(['All', 'Games', 'Apps'] as const).map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setCategoryFilter(cat)}
-                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                  categoryFilter === cat
-                    ? 'bg-red-600 text-white shadow-xs'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
+          {/* Category Tabs (Shown only in combined view) */}
+          {!mode && (
+            <div className="flex items-center rounded-xl bg-black/40 p-1 border border-white/10">
+              {(['All', 'Games', 'Apps'] as const).map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setCategoryFilter(cat)}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    categoryFilter === cat
+                      ? 'bg-red-600 text-white shadow-xs'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Status Dropdown */}
           <select
@@ -177,12 +192,22 @@ export default function AppsManager({
       {/* Grid of Apps & Games */}
       {filteredApps.length === 0 ? (
         <div className="p-12 text-center rounded-3xl bg-[#12131c]/50 border border-dashed border-white/10 space-y-3">
-          <p className="text-slate-400 text-sm">No apps or games match your query in database.</p>
+          <p className="text-slate-400 text-sm">
+            {mode === 'apps'
+              ? 'No applications match your query in database.'
+              : mode === 'games'
+              ? 'No games match your query in database.'
+              : 'No apps or games match your query in database.'}
+          </p>
           <button
             onClick={handleOpenCreate}
             className="px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white shadow-lg cursor-pointer"
           >
-            Add New App / Game
+            {mode === 'apps'
+              ? 'Add New Application'
+              : mode === 'games'
+              ? 'Add New Game'
+              : 'Add New App / Game'}
           </button>
         </div>
       ) : (
@@ -359,6 +384,7 @@ export default function AppsManager({
         }}
         onSave={handleSave}
         initialData={editingApp}
+        defaultCategory={mode === 'apps' ? 'Apps' : 'Games'}
       />
     </div>
   );

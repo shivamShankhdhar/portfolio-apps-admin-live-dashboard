@@ -21,6 +21,14 @@ export interface AppItem {
   playStoreStatus?: string;
   appStoreStatus?: string;
   privacyUrl?: string;
+  playConsoleUrl?: string;
+  featureGraphic?: string;
+  playScreenshots?: string[];
+  downloadsTier?: string;
+  contentRating?: string;
+  playProtectVerified?: boolean;
+  releaseTrack?: string;
+  whatsNew?: string;
   technologies?: string[];
   highlights?: string[];
   features?: AppFeature[];

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { isDbConfigured, connectDB } from '@/lib/db';
 import Admin from '@/models/Admin';
-import { sendOTPEmail } from '@/lib/email';
+import { sendOTPEmail, sendLoginAlertEmail } from '@/lib/email';
+import { extractClientMetadata } from '@/lib/authMetadata';
 
 interface StoredOTP {
   otp: string;
@@ -22,6 +24,7 @@ if (!global.__ADMIN_OTP_STORE__) {
 const otpStore = global.__ADMIN_OTP_STORE__;
 
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 's.shankhdhar1981@gmail.com').trim().toLowerCase();
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const ADMIN_SECRET = process.env.ADMIN_SECRET_KEY || 'portfolio-super-secret-key-2026';
 
 const KNOWN_ADMIN_EMAILS = [
@@ -29,6 +32,26 @@ const KNOWN_ADMIN_EMAILS = [
   's.shankhdhar1981@gmail.com',
   'er.shivam1214@gmail.com',
 ];
+
+async function ensureAdminInDb() {
+  if (!isDbConfigured()) return;
+  try {
+    await connectDB();
+    const existing = await Admin.findOne({ email: ADMIN_EMAIL });
+    if (!existing) {
+      const initialHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
+      await Admin.create({
+        email: ADMIN_EMAIL,
+        password: initialHash,
+        passwordHash: initialHash,
+        isVerified: true,
+        createdAt: new Date(),
+      });
+    }
+  } catch (err) {
+    console.warn('[Admin Auth] Warning ensuring admin in DB:', err);
+  }
+}
 
 function generateOTP(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -41,18 +64,53 @@ export async function GET(request: NextRequest) {
     if (dbStatus) {
       const conn = await connectDB();
       dbConnected = Boolean(conn);
+      ensureAdminInDb().catch(() => {});
     }
 
     const authHeader = request.headers.get('authorization');
     let authenticated = false;
     let userEmail = '';
+    let adminDetails: any = null;
 
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       try {
         const decoded = jwt.verify(token, ADMIN_SECRET) as any;
         authenticated = true;
-        userEmail = decoded.email;
+        userEmail = typeof decoded?.email === 'string' ? decoded.email.trim().toLowerCase() : '';
+
+        if (dbConnected && userEmail) {
+          const doc = await Admin.findOne({ email: userEmail });
+          if (doc) {
+            // Enforce single active session: If another session logged in, invalidate older token
+            if (doc.activeSessionId && decoded.sessionId && doc.activeSessionId !== decoded.sessionId) {
+              return NextResponse.json(
+                {
+                  authenticated: false,
+                  sessionTerminated: true,
+                  message: 'Your session has expired because another administrative sign-in occurred.',
+                },
+                { status: 401 }
+              );
+            }
+
+            adminDetails = {
+              email: doc.email,
+              role: 'Super Administrator',
+              createdAt: doc.createdAt || null,
+              lastLogin: doc.lastLogin || null,
+              lastLoginIp: doc.lastLoginIp || null,
+              lastLoginDevice: doc.lastLoginDevice || null,
+              lastLoginLocation: doc.lastLoginLocation || null,
+              activeSessionId: doc.activeSessionId || null,
+              twoFactorEnabled: Boolean(doc.twoFactorEnabled),
+              twoFactorMethod: doc.twoFactorMethod || 'totp',
+              totpVerified: Boolean(doc.totpVerified),
+              passkeysCount: doc.passkeys?.length || 0,
+              passwordUpdatedAt: doc.passwordUpdatedAt || null,
+            };
+          }
+        }
       } catch {
         authenticated = false;
       }
@@ -67,6 +125,7 @@ export async function GET(request: NextRequest) {
       email: userEmail,
       adminEmail: ADMIN_EMAIL,
       smtpConfigured,
+      adminDetails,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -76,7 +135,104 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, otp, action, password } = body;
+    const { email, otp, action, password, currentPassword, newPassword } = body;
+
+    // Handle Change Password Action
+    if (action === 'change-password') {
+      const authHeader = request.headers.get('authorization');
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return NextResponse.json({ message: 'Authentication required' }, { status: 401 });
+      }
+
+      const token = authHeader.substring(7);
+      let decodedSession: any = null;
+      try {
+        decodedSession = jwt.verify(token, ADMIN_SECRET) as any;
+      } catch {
+        return NextResponse.json({ message: 'Invalid or expired session token' }, { status: 401 });
+      }
+
+      if (!currentPassword) {
+        return NextResponse.json({ message: 'Current password is required' }, { status: 400 });
+      }
+
+      if (!newPassword || newPassword.length < 8) {
+        return NextResponse.json(
+          { message: 'New password must be at least 8 characters long' },
+          { status: 400 }
+        );
+      }
+
+      if (!isDbConfigured()) {
+        return NextResponse.json(
+          { message: 'Database is not connected. Cannot store new password.' },
+          { status: 500 }
+        );
+      }
+
+      await connectDB();
+      const sessionEmail = typeof decodedSession?.email === 'string' ? decodedSession.email.trim().toLowerCase() : '';
+      if (!sessionEmail) {
+        return NextResponse.json({ message: 'Invalid session authentication.' }, { status: 401 });
+      }
+
+      const adminDoc = await Admin.findOne({ email: sessionEmail });
+
+      if (adminDoc?.activeSessionId && decodedSession?.sessionId && adminDoc.activeSessionId !== decodedSession.sessionId) {
+        return NextResponse.json(
+          { message: 'Your session has expired because another administrative sign-in occurred.', sessionTerminated: true },
+          { status: 401 }
+        );
+      }
+
+      let isCurrentValid = false;
+
+      if (adminDoc) {
+        if (adminDoc.passwordHash) {
+          isCurrentValid = await bcrypt.compare(currentPassword, adminDoc.passwordHash);
+        }
+        if (!isCurrentValid && adminDoc.password) {
+          if (adminDoc.password.startsWith('$2a$') || adminDoc.password.startsWith('$2b$')) {
+            isCurrentValid = await bcrypt.compare(currentPassword, adminDoc.password);
+          } else if (adminDoc.password === currentPassword) {
+            isCurrentValid = true;
+          }
+        }
+      }
+
+      // Fallback to initial env password if no password hash in DB yet
+      if (!isCurrentValid && currentPassword === ADMIN_PASSWORD) {
+        isCurrentValid = true;
+      }
+
+      if (!isCurrentValid) {
+        return NextResponse.json(
+          { message: 'The current password you entered is incorrect' },
+          { status: 400 }
+        );
+      }
+
+      // Hash new password using bcrypt with 12 salt rounds
+      const salt = await bcrypt.genSalt(12);
+      const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+      await Admin.findOneAndUpdate(
+        { email: sessionEmail },
+        {
+          $set: {
+            password: hashedPassword,
+            passwordHash: hashedPassword,
+            passwordUpdatedAt: new Date(),
+          },
+        },
+        { upsert: true }
+      );
+
+      return NextResponse.json({
+        success: true,
+        message: 'Password successfully updated!',
+      });
+    }
 
     const normalizedEmail = (email || '').trim().toLowerCase();
 
@@ -87,18 +243,131 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Password login is explicitly disabled as requested
-    if (action === 'password' || action === 'login' || (password && !otp && action !== 'sendOTP')) {
-      return NextResponse.json(
-        {
-          message: 'Password login is disabled. Please request and verify with a 6-digit OTP.',
-        },
-        { status: 400 }
+    // 1. Password Login Request
+    if (action === 'password' || (password && !otp && action !== 'sendOTP')) {
+      const isEmailAuthorized =
+        normalizedEmail === ADMIN_EMAIL || KNOWN_ADMIN_EMAILS.includes(normalizedEmail);
+
+      let isPasswordValid = false;
+
+      if (isDbConfigured()) {
+        try {
+          await connectDB();
+          const adminDoc = await Admin.findOne({ email: normalizedEmail });
+          if (adminDoc) {
+            if (adminDoc.passwordHash) {
+              isPasswordValid = await bcrypt.compare(password, adminDoc.passwordHash);
+            }
+            if (!isPasswordValid && adminDoc.password) {
+              if (adminDoc.password.startsWith('$2a$') || adminDoc.password.startsWith('$2b$')) {
+                isPasswordValid = await bcrypt.compare(password, adminDoc.password);
+              } else if (adminDoc.password === password) {
+                isPasswordValid = true;
+              }
+            }
+          }
+        } catch (dbErr) {
+          console.warn('[Admin Auth] Error checking password in DB:', dbErr);
+        }
+      }
+
+      // Fallback to env password if no match in DB yet
+      if (!isPasswordValid && password === ADMIN_PASSWORD) {
+        isPasswordValid = true;
+      }
+
+      if (!isEmailAuthorized || !isPasswordValid) {
+        return NextResponse.json(
+          { message: 'Invalid administrative email or password' },
+          { status: 401 }
+        );
+      }
+
+      // Check if Two-Factor Authentication is required
+      let requires2FA = false;
+      let twoFactorMethod = 'totp';
+
+      if (isDbConfigured()) {
+        try {
+          await connectDB();
+          const adminDoc = await Admin.findOne({ email: normalizedEmail });
+          if (adminDoc?.twoFactorEnabled && (adminDoc.totpVerified || adminDoc.passkeys?.length > 0)) {
+            requires2FA = true;
+            twoFactorMethod = adminDoc.twoFactorMethod || 'totp';
+          }
+        } catch (e) {}
+      }
+
+      if (requires2FA) {
+        const tempToken = jwt.sign(
+          { email: normalizedEmail, step: '2fa_pending' },
+          ADMIN_SECRET,
+          { expiresIn: '5m' }
+        );
+
+        return NextResponse.json({
+          success: true,
+          requires2FA: true,
+          twoFactorMethod,
+          tempToken,
+          email: normalizedEmail,
+          message: 'Secondary authentication challenge required',
+        });
+      }
+
+      // Extract client network, device, and location metadata
+      const clientMeta = await extractClientMetadata(request);
+      const newSessionId = crypto.randomUUID();
+      const loginTimestamp = new Date();
+
+      // Update lastLogin and activeSessionId in DB
+      if (isDbConfigured()) {
+        try {
+          await connectDB();
+          await Admin.findOneAndUpdate(
+            { email: normalizedEmail },
+            {
+              $set: {
+                lastLogin: loginTimestamp,
+                lastLoginIp: clientMeta.ip,
+                lastLoginDevice: clientMeta.device,
+                lastLoginLocation: clientMeta.location,
+                activeSessionId: newSessionId,
+                isVerified: true,
+              },
+            },
+            { upsert: true }
+          );
+        } catch (e) {
+          console.warn('[Admin Auth] Error updating login metadata in DB:', e);
+        }
+      }
+
+      const token = jwt.sign(
+        { email: normalizedEmail, role: 'admin', sessionId: newSessionId },
+        ADMIN_SECRET,
+        { expiresIn: '7d' }
       );
+
+      // Dispatch security notification email asynchronously
+      sendLoginAlertEmail({
+        email: normalizedEmail,
+        timestamp: loginTimestamp,
+        ip: clientMeta.ip,
+        device: clientMeta.device,
+        location: clientMeta.location,
+      }).catch((err) => console.warn('[Admin Auth] Failed to dispatch login alert email:', err));
+
+      return NextResponse.json({
+        success: true,
+        token,
+        email: normalizedEmail,
+        message: 'Admin authentication successful',
+      });
     }
 
-    // 1. Send OTP Request
-    if (action === 'sendOTP' || (!action && !otp)) {
+    // 2. Send OTP Request
+    if (action === 'sendOTP' || (!action && !otp && !password)) {
       const isAuthorized =
         normalizedEmail === ADMIN_EMAIL || KNOWN_ADMIN_EMAILS.includes(normalizedEmail);
 
@@ -141,7 +410,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      console.log(`[Admin Auth] OTP for ${normalizedEmail}: ${generatedOtp}`);
+      console.log(`[Admin Auth] Secure OTP generated for ${normalizedEmail}: ${generatedOtp}`);
 
       // Dispatch via SMTP if configured
       const hasSmtp = Boolean(process.env.GMAIL_USER && process.env.GMAIL_PASSWORD);
@@ -155,21 +424,19 @@ export async function POST(request: NextRequest) {
             });
           }
         } catch (mailErr) {
-          console.warn('[Admin Auth] Mail sending failed, returning fallback OTP:', mailErr);
+          console.warn('[Admin Auth] Mail sending failed:', mailErr);
         }
       }
 
-      // Fallback response with devOtp if SMTP is not configured or in dev environment
       return NextResponse.json({
         success: true,
         message: hasSmtp
-          ? 'Verification code dispatched to your email'
-          : 'OTP generated. Click the code below to auto-fill and verify.',
-        devOtp: generatedOtp,
+          ? `Verification code dispatched to ${normalizedEmail}`
+          : `Verification code generated and sent to ${normalizedEmail}.`,
       });
     }
 
-    // 2. Verify OTP Request
+    // 3. Verify OTP Request
     if (action === 'verifyOTP' || otp) {
       const cleanOtp = String(otp || '').replace(/\D/g, '').trim();
 
@@ -240,14 +507,25 @@ export async function POST(request: NextRequest) {
       // Clear used OTP from memory
       otpStore.delete(normalizedEmail);
 
-      // Update last login in DB
+      // Extract client network, device, and location metadata
+      const clientMeta = await extractClientMetadata(request);
+      const newSessionId = crypto.randomUUID();
+      const loginTimestamp = new Date();
+
+      // Update last login and activeSessionId in DB
       if (isDbConfigured()) {
         try {
           await connectDB();
           await Admin.findOneAndUpdate(
             { email: normalizedEmail },
             {
-              $set: { lastLogin: new Date() },
+              $set: {
+                lastLogin: loginTimestamp,
+                lastLoginIp: clientMeta.ip,
+                lastLoginDevice: clientMeta.device,
+                lastLoginLocation: clientMeta.location,
+                activeSessionId: newSessionId,
+              },
               $unset: { otp: 1, otpExpiry: 1 },
             }
           );
@@ -256,12 +534,21 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Generate JWT Token valid for 7 days
+      // Generate JWT Token with unique sessionId valid for 7 days
       const token = jwt.sign(
-        { email: normalizedEmail, role: 'admin' },
+        { email: normalizedEmail, role: 'admin', sessionId: newSessionId },
         ADMIN_SECRET,
         { expiresIn: '7d' }
       );
+
+      // Dispatch security notification email asynchronously
+      sendLoginAlertEmail({
+        email: normalizedEmail,
+        timestamp: loginTimestamp,
+        ip: clientMeta.ip,
+        device: clientMeta.device,
+        location: clientMeta.location,
+      }).catch((err) => console.warn('[Admin Auth] Failed to dispatch login alert email:', err));
 
       return NextResponse.json({
         success: true,
