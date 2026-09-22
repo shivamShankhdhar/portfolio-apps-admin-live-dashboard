@@ -36,42 +36,43 @@ import Sidebar, { AdminTab } from '@/components/admin/Sidebar';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import ConfirmDialog from '@/components/admin/ConfirmDialog';
-
-interface PasskeyDevice {
-  credentialId: string;
-  deviceName: string;
-  createdAt: string;
-}
-
-interface AdminDetails {
-  email: string;
-  role: string;
-  createdAt: string | null;
-  lastLogin: string | null;
-  lastLoginIp?: string | null;
-  lastLoginDevice?: string | null;
-  lastLoginLocation?: string | null;
-  activeSessionId?: string | null;
-  twoFactorEnabled: boolean;
-  twoFactorMethod: string;
-  totpVerified: boolean;
-  passkeysCount: number;
-  passwordUpdatedAt: string | null;
-}
-
-type AuthStatus = 'validating' | 'authorized' | 'unauthorized';
+import { useAuthSession, useChangePassword } from '@/hooks/useAuthSession';
+import {
+  useTwoFactorStatus,
+  useToggle2FA,
+  useGenerateTotp,
+  useVerifyTotp,
+  useDisableTotp,
+  useRegisterPasskey,
+  useDeletePasskey,
+  detectDeviceName,
+} from '@/hooks/useTwoFactor';
+import { useApps } from '@/hooks/useApps';
+import { useProjects } from '@/hooks/useProjects';
+import { useMessages } from '@/hooks/useMessages';
+import { useProfile } from '@/hooks/useProfile';
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [authStatus, setAuthStatus] = useState<AuthStatus>('validating');
-  const [adminEmail, setAdminEmail] = useState('');
-  const [dbConnected, setDbConnected] = useState(false);
   const [activeTab, setActiveTab] = useState<'profile' | '2fa' | 'privacy' | 'system'>('profile');
-  const [loading, setLoading] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  // Admin user details from API
-  const [adminDetails, setAdminDetails] = useState<AdminDetails | null>(null);
+  // TanStack Query Hooks
+  const { data: authData, isLoading: isAuthLoading } = useAuthSession();
+  const { data: twoFactorData } = useTwoFactorStatus();
+  const { data: apps = [] } = useApps();
+  const { data: projects = [] } = useProjects();
+  const { data: messages = [] } = useMessages();
+  const { data: profile } = useProfile();
+
+  // Mutations
+  const changePasswordMutation = useChangePassword();
+  const toggle2FAMutation = useToggle2FA();
+  const generateTotpMutation = useGenerateTotp();
+  const verifyTotpMutation = useVerifyTotp();
+  const disableTotpMutation = useDisableTotp();
+  const registerPasskeyMutation = useRegisterPasskey();
+  const deletePasskeyMutation = useDeletePasskey();
 
   // Password Change Form State
   const [currentPassword, setCurrentPassword] = useState('');
@@ -80,151 +81,64 @@ export default function SettingsPage() {
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
-
-  // 2FA State
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
-  const [twoFactorMethod, setTwoFactorMethod] = useState<'totp' | 'passkey' | 'both'>('totp');
-  const [totpVerified, setTotpVerified] = useState(false);
-  const [passkeys, setPasskeys] = useState<PasskeyDevice[]>([]);
 
   // TOTP Setup State
-  const [isGeneratingTotp, setIsGeneratingTotp] = useState(false);
   const [totpSecret, setTotpSecret] = useState('');
   const [totpQrCode, setTotpQrCode] = useState('');
   const [testCode, setTestCode] = useState('');
   const [copiedSecret, setCopiedSecret] = useState(false);
+  const [showDisableTotpConfirm, setShowDisableTotpConfirm] = useState(false);
 
   // Passkey Setup State
-  const [isRegisteringPasskey, setIsRegisteringPasskey] = useState(false);
   const [showPasskeyModal, setShowPasskeyModal] = useState(false);
   const [detectedDevice, setDetectedDevice] = useState('');
   const [deletingPasskeyId, setDeletingPasskeyId] = useState<string | null>(null);
-  const [isDeletingPasskey, setIsDeletingPasskey] = useState(false);
-  const [showDisableTotpConfirm, setShowDisableTotpConfirm] = useState(false);
-  const [isDisablingTotp, setIsDisablingTotp] = useState(false);
 
-  // Auto-detect device name from browser user-agent
-  const detectDeviceName = (): string => {
-    if (typeof window === 'undefined') return 'Unknown Device';
-    const ua = navigator.userAgent;
-    let os = 'Unknown OS';
-    let browser = 'Unknown Browser';
-    if (/iPhone/.test(ua)) os = 'iPhone';
-    else if (/iPad/.test(ua)) os = 'iPad';
-    else if (/Macintosh|Mac OS X/.test(ua)) os = 'MacBook';
-    else if (/Windows NT 10/.test(ua)) os = 'Windows 10';
-    else if (/Windows NT/.test(ua)) os = 'Windows';
-    else if (/Android/.test(ua)) os = 'Android';
-    else if (/Linux/.test(ua)) os = 'Linux';
-    if (/Edg\//.test(ua)) browser = 'Edge';
-    else if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) browser = 'Chrome';
-    else if (/Firefox\//.test(ua)) browser = 'Firefox';
-    else if (/Safari\//.test(ua) && !/Chrome/.test(ua)) browser = 'Safari';
-    else if (/OPR\/|Opera/.test(ua)) browser = 'Opera';
-    return `${os} · ${browser}`;
-  };
+  // Derived state from queries
+  const adminEmail =
+    authData?.email ||
+    (typeof window !== 'undefined' ? localStorage.getItem('adminEmail') : '') ||
+    's.shankhdhar1981@gmail.com';
+  const dbConnected = Boolean(authData?.dbConnected);
+  const adminDetails = authData?.adminDetails || null;
 
-  // Sidebar Counts State
-  const [appsCount, setAppsCount] = useState(0);
-  const [gamesCount, setGamesCount] = useState(0);
-  const [projectsCount, setProjectsCount] = useState(0);
-  const [messagesCount, setMessagesCount] = useState(0);
-  const [profile, setProfile] = useState<any>(null);
+  const twoFactorEnabled = Boolean(twoFactorData?.twoFactorEnabled);
+  const twoFactorMethod = twoFactorData?.twoFactorMethod || 'totp';
+  const totpVerified = Boolean(twoFactorData?.totpVerified);
+  const passkeys = twoFactorData?.passkeys || [];
 
-  // 1. Verify Session & Fetch User Details
+  const appsCount = apps.filter((a: any) => (a.category || '').toLowerCase() !== 'games').length;
+  const gamesCount = apps.filter((a: any) => (a.category || '').toLowerCase() === 'games').length;
+  const projectsCount = projects.length;
+  const messagesCount = messages.length;
+
+  const isChangingPassword = changePasswordMutation.isPending;
+  const isGeneratingTotp = generateTotpMutation.isPending;
+  const isRegisteringPasskey = registerPasskeyMutation.isPending;
+  const isDeletingPasskey = deletePasskeyMutation.isPending;
+  const isDisablingTotp = disableTotpMutation.isPending;
+  const loading = toggle2FAMutation.isPending || verifyTotpMutation.isPending;
+
+  // Verify Session Token
   useEffect(() => {
-    let isMounted = true;
-
-    async function verifySession() {
-      const token = localStorage.getItem('adminToken');
-      const email = localStorage.getItem('adminEmail');
-
-      if (!token) {
-        if (!isMounted) return;
-        setAuthStatus('unauthorized');
-        setTimeout(() => router.replace('/login'), 250);
-        return;
-      }
-
-      try {
-        const res = await fetch('/api/auth', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-
-        if (!res.ok || !data.authenticated) {
-          localStorage.removeItem('adminToken');
-          if (data.sessionTerminated) {
-            toast.error('Session expired: Another administrator session was started.');
-          }
-          if (!isMounted) return;
-          setAuthStatus('unauthorized');
-          setTimeout(() => router.replace('/login'), 250);
-          return;
-        }
-
-        if (!isMounted) return;
-        const finalEmail = data.email || email || 's.shankhdhar1981@gmail.com';
-        setAdminEmail(finalEmail);
-        setDbConnected(Boolean(data.dbConnected));
-        if (data.adminDetails) {
-          setAdminDetails(data.adminDetails);
-        }
-        setAuthStatus('authorized');
-
-        // Fetch counts & profile for sidebar
-        fetch('/api/apps')
-          .then((r) => r.json())
-          .then((d) => {
-            if (Array.isArray(d)) {
-              setAppsCount(d.filter((a: any) => (a.category || '').toLowerCase() !== 'games').length);
-              setGamesCount(d.filter((a: any) => (a.category || '').toLowerCase() === 'games').length);
-            }
-          })
-          .catch(() => {});
-        fetch('/api/projects').then((r) => r.json()).then((d) => Array.isArray(d) && setProjectsCount(d.length)).catch(() => {});
-        fetch('/api/messages').then((r) => r.json()).then((d) => Array.isArray(d) && setMessagesCount(d.length)).catch(() => {});
-        fetch('/api/profile?t=' + Date.now(), { cache: 'no-store' }).then((r) => r.json()).then((d) => d && setProfile(d)).catch(() => {});
-
-        // Fetch 2FA status
-        fetch2FAStatus(token);
-      } catch (err) {
-        if (!isMounted) return;
-        setAuthStatus('unauthorized');
-        setTimeout(() => router.replace('/login'), 250);
-      }
+    if (typeof window === 'undefined') return;
+    const token = localStorage.getItem('adminToken');
+    if (!token) {
+      router.replace('/login');
     }
-
-    verifySession();
-
-    return () => {
-      isMounted = false;
-    };
   }, [router]);
 
-  // 2. Fetch 2FA Status
-  const fetch2FAStatus = async (tokenOverride?: string) => {
-    try {
-      const token = tokenOverride || localStorage.getItem('adminToken');
-      if (!token) return;
-
-      const res = await fetch('/api/auth/2fa', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setTwoFactorEnabled(Boolean(data.twoFactorEnabled));
-        setTwoFactorMethod(data.twoFactorMethod || 'totp');
-        setTotpVerified(Boolean(data.totpVerified));
-        setPasskeys(data.passkeys || []);
+  useEffect(() => {
+    if (authData && !authData.authenticated) {
+      localStorage.removeItem('adminToken');
+      if (authData.sessionTerminated) {
+        toast.error('Session expired: Another administrator session was started.');
       }
-    } catch (err) {
-      console.error('Error fetching 2FA status:', err);
+      router.replace('/login');
     }
-  };
+  }, [authData, router]);
 
-  // 3. Change Password Handler
+  // 1. Change Password Handler
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -243,109 +157,38 @@ export default function SettingsPage() {
       return;
     }
 
-    setIsChangingPassword(true);
     try {
-      const token = localStorage.getItem('adminToken');
-      const res = await fetch('/api/auth', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          action: 'change-password',
-          currentPassword,
-          newPassword,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || 'Failed to update password');
-      }
-
-      toast.success(data.message || 'Password updated successfully!');
+      await changePasswordMutation.mutateAsync({ currentPassword, newPassword });
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-
-      // Refresh admin details
-      const refreshRes = await fetch('/api/auth', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const refreshData = await refreshRes.json();
-      if (refreshData.adminDetails) {
-        setAdminDetails(refreshData.adminDetails);
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Error updating password');
-    } finally {
-      setIsChangingPassword(false);
+    } catch {
+      // Error handled by mutation
     }
   };
 
-  // 4. Master Toggle 2FA
+  // 2. Master Toggle 2FA
   const handleToggle2FA = async (enable: boolean) => {
-    setLoading(true);
     try {
-      const token = localStorage.getItem('adminToken');
-      const res = await fetch('/api/auth/2fa', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          action: 'toggle-2fa',
-          enabled: enable,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || 'Failed to update 2FA status');
-      }
-
-      setTwoFactorEnabled(enable);
-      toast.success(data.message);
-      await fetch2FAStatus();
-    } catch (err: any) {
-      toast.error(err.message || 'Error updating 2FA');
-    } finally {
-      setLoading(false);
+      await toggle2FAMutation.mutateAsync(enable);
+    } catch {
+      // Error handled by mutation
     }
   };
 
-  // 5. Generate TOTP Secret & QR Code
+  // 3. Generate TOTP Secret & QR Code
   const handleGenerateTotp = async () => {
-    setIsGeneratingTotp(true);
     try {
-      const token = localStorage.getItem('adminToken');
-      const res = await fetch('/api/auth/2fa', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ action: 'generate-totp' }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || 'Failed to generate key');
-      }
-
+      const data = await generateTotpMutation.mutateAsync();
       setTotpSecret(data.secret);
       setTotpQrCode(data.qrCode);
       setTestCode('');
-    } catch (err: any) {
-      toast.error(err.message || 'Error generating key');
-    } finally {
-      setIsGeneratingTotp(false);
+    } catch {
+      // Error handled by mutation
     }
   };
 
-  // 6. Verify & Activate TOTP
+  // 4. Verify & Activate TOTP
   const handleVerifyTotp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!testCode || testCode.trim().length !== 6) {
@@ -353,162 +196,38 @@ export default function SettingsPage() {
       return;
     }
 
-    setLoading(true);
     try {
-      const token = localStorage.getItem('adminToken');
-      const res = await fetch('/api/auth/2fa', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          action: 'verify-enable-totp',
-          code: testCode.trim(),
-          secret: totpSecret,
-        }),
+      await verifyTotpMutation.mutateAsync({
+        code: testCode,
+        secret: totpSecret,
       });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || 'Invalid code');
-      }
-
-      toast.success(data.message);
-      setTotpVerified(true);
-      setTwoFactorEnabled(true);
       setTotpQrCode('');
       setTotpSecret('');
-      await fetch2FAStatus();
-    } catch (err: any) {
-      toast.error(err.message || 'Verification failed');
-    } finally {
-      setLoading(false);
+      setTestCode('');
+    } catch {
+      // Error handled by mutation
     }
   };
 
-  // 7. Register Passkey / Biometrics via WebAuthn
+  // 5. Register Passkey / Biometrics via WebAuthn
   const handleRegisterPasskey = async () => {
-    if (typeof window === 'undefined' || !window.PublicKeyCredential) {
-      toast.error('Biometric passkeys are not supported in this browser.');
-      return;
-    }
-
-    setIsRegisteringPasskey(true);
     try {
-      const token = localStorage.getItem('adminToken');
-
-      const optRes = await fetch('/api/auth/2fa', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ action: 'passkey-register-options' }),
-      });
-
-      const optData = await optRes.json();
-      if (!optRes.ok || !optData.options) {
-        throw new Error(optData.message || 'Failed to prepare registration');
-      }
-
-      const { options } = optData;
-
-      // Pure-JS base64url → Uint8Array<ArrayBuffer>: no atob dependency
-      const b64urlToUint8 = (b64url: string): Uint8Array<ArrayBuffer> => {
-        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-        const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
-        const stripped = b64.replace(/=/g, '');
-        const padded = stripped + '==='.slice(0, (4 - (stripped.length % 4)) % 4);
-        const out: number[] = [];
-        for (let i = 0; i < padded.length; i += 4) {
-          const a = chars.indexOf(padded[i]);
-          const b = chars.indexOf(padded[i + 1]);
-          const c = chars.indexOf(padded[i + 2]);
-          const d = chars.indexOf(padded[i + 3]);
-          out.push((a << 2) | (b >> 4));
-          if (padded[i + 2] !== '=') out.push(((b & 0xf) << 4) | (c >> 2));
-          if (padded[i + 3] !== '=') out.push(((c & 0x3) << 6) | d);
-        }
-        const buf = new ArrayBuffer(out.length);
-        const view = new Uint8Array(buf);
-        out.forEach((v, i) => { view[i] = v; });
-        return view as Uint8Array<ArrayBuffer>;
-      };
-
-      const challengeBuffer = b64urlToUint8(options.challenge);
-      const userIdBuffer = b64urlToUint8(options.user.id);
-
-      const credential = (await navigator.credentials.create({
-        publicKey: {
-          challenge: challengeBuffer,
-          rp: options.rp,
-          user: {
-            id: userIdBuffer,
-            name: options.user.name,
-            displayName: options.user.displayName,
-          },
-          pubKeyCredParams: options.pubKeyCredParams,
-          authenticatorSelection: options.authenticatorSelection,
-          timeout: options.timeout,
-          attestation: options.attestation,
-        },
-      })) as PublicKeyCredential;
-
-      if (!credential) throw new Error('Sensor verification was cancelled.');
-
-      const rawResponse = credential.response as AuthenticatorAttestationResponse;
-      const clientDataJSON = btoa(String.fromCharCode(...new Uint8Array(rawResponse.clientDataJSON)))
-        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-
-      const verifyRes = await fetch('/api/auth/2fa', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          action: 'passkey-register-verify',
-          credentialId: credential.id,
-          clientDataJSON,
-          deviceName: detectedDevice || detectDeviceName(),
-        }),
-      });
-
-      const verifyData = await verifyRes.json();
-      if (!verifyRes.ok) throw new Error(verifyData.message || 'Failed to verify passkey');
-
-      toast.success(verifyData.message);
+      await registerPasskeyMutation.mutateAsync(detectedDevice || detectDeviceName());
       setShowPasskeyModal(false);
       setDetectedDevice('');
-      setTwoFactorEnabled(true);
-      await fetch2FAStatus();
-    } catch (err: any) {
-      if (err.name === 'NotAllowedError') {
-        toast.info('Passkey registration cancelled');
-      } else {
-        toast.error(err.message || 'Passkey registration error');
-      }
-    } finally {
-      setIsRegisteringPasskey(false);
+    } catch {
+      // Error handled by mutation
     }
   };
 
-  // 8. Delete Passkey
+  // 6. Delete Passkey
   const handleDeletePasskey = async () => {
     if (!deletingPasskeyId) return;
-    setIsDeletingPasskey(true);
     try {
-      const token = localStorage.getItem('adminToken');
-      const res = await fetch('/api/auth/2fa', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ action: 'delete-passkey', credentialId: deletingPasskeyId }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(data.message);
-        setDeletingPasskeyId(null);
-        await fetch2FAStatus();
-      }
+      await deletePasskeyMutation.mutateAsync(deletingPasskeyId);
+      setDeletingPasskeyId(null);
     } catch {
-      toast.error('Error removing passkey');
-    } finally {
-      setIsDeletingPasskey(false);
+      // Error handled by mutation
     }
   };
 
@@ -521,29 +240,13 @@ export default function SettingsPage() {
 
   // Disable / Remove TOTP
   const handleDisableTotp = async () => {
-    setIsDisablingTotp(true);
     try {
-      const token = localStorage.getItem('adminToken');
-      const res = await fetch('/api/auth/2fa', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ action: 'disable-totp' }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(data.message);
-        setTotpVerified(false);
-        setTotpSecret('');
-        setTotpQrCode('');
-        setShowDisableTotpConfirm(false);
-        await fetch2FAStatus();
-      } else {
-        toast.error(data.message || 'Failed to remove authenticator');
-      }
+      await disableTotpMutation.mutateAsync();
+      setTotpSecret('');
+      setTotpQrCode('');
+      setShowDisableTotpConfirm(false);
     } catch {
-      toast.error('Error removing authenticator app');
-    } finally {
-      setIsDisablingTotp(false);
+      // Error handled by mutation
     }
   };
 
@@ -565,7 +268,7 @@ export default function SettingsPage() {
   const strength = calculatePasswordStrength(newPassword);
 
   // Validation Gate — show skeleton layout instead of black screen
-  if (authStatus !== 'authorized') {
+  if (isAuthLoading || !authData?.authenticated) {
     return (
       <div className="min-h-screen w-full bg-[#09090b] flex">
         {/* Skeleton Sidebar */}
@@ -652,7 +355,7 @@ export default function SettingsPage() {
       {/* Persistent Sidebar */}
       <Sidebar
         activeTab={'apps' as AdminTab}
-        setActiveTab={(tab) => {
+        setActiveTab={(tab: AdminTab) => {
           router.push(`/?tab=${tab}`);
         }}
         appsCount={appsCount}
@@ -689,11 +392,10 @@ export default function SettingsPage() {
 
           <div className="flex items-center gap-3">
             <div
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-mono font-semibold border ${
-                twoFactorEnabled
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-mono font-semibold border ${twoFactorEnabled
                   ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
                   : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-              }`}
+                }`}
             >
               <FiShield className="h-3.5 w-3.5" />
               <span>{twoFactorEnabled ? '2FA Enabled' : '2FA Disabled'}</span>
@@ -714,7 +416,7 @@ export default function SettingsPage() {
 
         {/* Main Content Area */}
         <main className="flex-1 p-6 sm:p-8 max-w-6xl w-full space-y-8">
-          
+
           {/* Top Overview Cards Banner */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* 1. Admin Identity */}
@@ -771,8 +473,8 @@ export default function SettingsPage() {
                 {passkeys.length > 0
                   ? `${passkeys.length} Passkeys & Authenticator`
                   : totpVerified
-                  ? 'Authenticator App'
-                  : 'Not configured'}
+                    ? 'Authenticator App'
+                    : 'Not configured'}
               </p>
             </div>
 
@@ -1319,104 +1021,104 @@ export default function SettingsPage() {
 
             {/* TAB 3: PRIVACY & SECURITY */}
             <TabsContent value="privacy" className="mt-0">
-            <div className="p-6 sm:p-8 rounded-3xl bg-[#12131c] border border-white/10 space-y-6">
-              <div className="space-y-1 border-b border-white/10 pb-4">
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <FiShield className="h-4 w-4 text-red-400" />
-                  <span>Privacy &amp; Security Standards</span>
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Data protection policies and session security overview.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">
-                    Session Security
-                  </span>
-                  <p className="text-sm font-bold text-white">Active Protection</p>
+              <div className="p-6 sm:p-8 rounded-3xl bg-[#12131c] border border-white/10 space-y-6">
+                <div className="space-y-1 border-b border-white/10 pb-4">
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <FiShield className="h-4 w-4 text-red-400" />
+                    <span>Privacy &amp; Security Standards</span>
+                  </h3>
                   <p className="text-xs text-slate-400">
-                    Secure token-based authentication with automatic expiry.
+                    Data protection policies and session security overview.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">
-                    Database Security
-                  </span>
-                  <p className="text-sm font-bold text-white">Encrypted Cloud Connection</p>
-                  <p className="text-xs text-slate-400">
-                    Isolated access control with secured credentials.
-                  </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">
+                      Session Security
+                    </span>
+                    <p className="text-sm font-bold text-white">Active Protection</p>
+                    <p className="text-xs text-slate-400">
+                      Secure token-based authentication with automatic expiry.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">
+                      Database Security
+                    </span>
+                    <p className="text-sm font-bold text-white">Encrypted Cloud Connection</p>
+                    <p className="text-xs text-slate-400">
+                      Isolated access control with secured credentials.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-3">
+                  <h4 className="text-xs font-mono uppercase tracking-wider text-slate-300 font-bold">
+                    Zero Telemetry &amp; Privacy Disclosures
+                  </h4>
+                  <ul className="space-y-2 text-xs text-slate-300">
+                    <li className="flex items-center gap-2">
+                      <FiCheck className="h-4 w-4 text-emerald-400 shrink-0" />
+                      <span>Administrative credentials are securely managed on the server and never exposed in client bundles.</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <FiCheck className="h-4 w-4 text-emerald-400 shrink-0" />
+                      <span>Biometric verification is processed directly on your local device.</span>
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <FiCheck className="h-4 w-4 text-emerald-400 shrink-0" />
+                      <span>Zero third-party analytics or tracking scripts are loaded in the admin dashboard.</span>
+                    </li>
+                  </ul>
                 </div>
               </div>
-
-              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-3">
-                <h4 className="text-xs font-mono uppercase tracking-wider text-slate-300 font-bold">
-                  Zero Telemetry &amp; Privacy Disclosures
-                </h4>
-                <ul className="space-y-2 text-xs text-slate-300">
-                  <li className="flex items-center gap-2">
-                    <FiCheck className="h-4 w-4 text-emerald-400 shrink-0" />
-                    <span>Administrative credentials are securely managed on the server and never exposed in client bundles.</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <FiCheck className="h-4 w-4 text-emerald-400 shrink-0" />
-                    <span>Biometric verification is processed directly on your local device.</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <FiCheck className="h-4 w-4 text-emerald-400 shrink-0" />
-                    <span>Zero third-party analytics or tracking scripts are loaded in the admin dashboard.</span>
-                  </li>
-                </ul>
-              </div>
-            </div>
             </TabsContent>
 
             {/* TAB 4: SYSTEM DIAGNOSTICS */}
             <TabsContent value="system" className="mt-0">
-            <div className="p-6 sm:p-8 rounded-3xl bg-[#12131c] border border-white/10 space-y-6">
-              <div className="space-y-1 border-b border-white/10 pb-4">
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <FiCpu className="h-4 w-4 text-red-400" />
-                  <span>System Diagnostics</span>
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Status of database connection and application services.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-1">
-                  <span className="text-[10px] font-mono text-slate-400 uppercase">Database</span>
-                  <p className="text-sm font-bold text-white flex items-center gap-2">
-                    <span className={`h-2.5 w-2.5 rounded-full ${dbConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
-                    <span>{dbConnected ? 'Connected & Healthy' : 'Disconnected'}</span>
+              <div className="p-6 sm:p-8 rounded-3xl bg-[#12131c] border border-white/10 space-y-6">
+                <div className="space-y-1 border-b border-white/10 pb-4">
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <FiCpu className="h-4 w-4 text-red-400" />
+                    <span>System Diagnostics</span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Status of database connection and application services.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-1">
-                  <span className="text-[10px] font-mono text-slate-400 uppercase">Registered Apps</span>
-                  <p className="text-sm font-bold text-white">{appsCount} Production Apps</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-1">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase">Database</span>
+                    <p className="text-sm font-bold text-white flex items-center gap-2">
+                      <span className={`h-2.5 w-2.5 rounded-full ${dbConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+                      <span>{dbConnected ? 'Connected & Healthy' : 'Disconnected'}</span>
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-1">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase">Registered Apps</span>
+                    <p className="text-sm font-bold text-white">{appsCount} Production Apps</p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-1">
+                    <span className="text-[10px] font-mono text-slate-400 uppercase">Portfolio Projects</span>
+                    <p className="text-sm font-bold text-white">{projectsCount} Projects Active</p>
+                  </div>
                 </div>
 
-                <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-1">
-                  <span className="text-[10px] font-mono text-slate-400 uppercase">Portfolio Projects</span>
-                  <p className="text-sm font-bold text-white">{projectsCount} Projects Active</p>
+                <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
+                  <span className="text-[10px] font-mono text-slate-400 uppercase font-bold">API Services</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono text-slate-300">
+                    <div className="p-2 rounded-xl bg-white/5 border border-white/5">Auth Service (Active)</div>
+                    <div className="p-2 rounded-xl bg-white/5 border border-white/5">Apps Service (Active)</div>
+                    <div className="p-2 rounded-xl bg-white/5 border border-white/5">Projects Service (Active)</div>
+                    <div className="p-2 rounded-xl bg-white/5 border border-white/5">Profile Service (Active)</div>
+                  </div>
                 </div>
               </div>
-
-              <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-2">
-                <span className="text-[10px] font-mono text-slate-400 uppercase font-bold">API Services</span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono text-slate-300">
-                  <div className="p-2 rounded-xl bg-white/5 border border-white/5">Auth Service (Active)</div>
-                  <div className="p-2 rounded-xl bg-white/5 border border-white/5">Apps Service (Active)</div>
-                  <div className="p-2 rounded-xl bg-white/5 border border-white/5">Projects Service (Active)</div>
-                  <div className="p-2 rounded-xl bg-white/5 border border-white/5">Profile Service (Active)</div>
-                </div>
-              </div>
-            </div>
             </TabsContent>
           </Tabs>
 

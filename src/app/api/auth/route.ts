@@ -286,6 +286,9 @@ export async function POST(request: NextRequest) {
       // Check if Two-Factor Authentication is required
       let requires2FA = false;
       let twoFactorMethod = 'totp';
+      let hasTotp = false;
+      let hasPasskeys = false;
+      let passkeysCount = 0;
 
       if (isDbConfigured()) {
         try {
@@ -294,6 +297,9 @@ export async function POST(request: NextRequest) {
           if (adminDoc?.twoFactorEnabled && (adminDoc.totpVerified || adminDoc.passkeys?.length > 0)) {
             requires2FA = true;
             twoFactorMethod = adminDoc.twoFactorMethod || 'totp';
+            hasTotp = Boolean(adminDoc.totpVerified);
+            hasPasskeys = (adminDoc.passkeys?.length || 0) > 0;
+            passkeysCount = adminDoc.passkeys?.length || 0;
           }
         } catch (e) {}
       }
@@ -309,6 +315,9 @@ export async function POST(request: NextRequest) {
           success: true,
           requires2FA: true,
           twoFactorMethod,
+          hasTotp,
+          hasPasskeys,
+          passkeysCount,
           tempToken,
           email: normalizedEmail,
           message: 'Secondary authentication challenge required',

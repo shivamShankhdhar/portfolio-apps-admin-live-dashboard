@@ -4,297 +4,269 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   FiShield,
-  FiMail,
-  FiLock,
+  FiTerminal,
   FiEye,
   FiEyeOff,
-  FiKey,
-  FiArrowRight,
-  FiArrowLeft,
-  FiRotateCw,
-  FiDatabase,
-  FiCheckCircle,
   FiSmartphone,
-  FiAlertCircle,
+  FiRotateCw,
 } from 'react-icons/fi';
 import { FaFingerprint } from 'react-icons/fa6';
-import { toast } from 'sonner';
 
-export default function LoginPage() {
+interface TerminalLog {
+  id: string;
+  type: 'system' | 'user' | 'info' | 'success' | 'error' | 'warning' | 'prompt';
+  text: string;
+}
+
+type TerminalStep =
+  | 'email'
+  | 'password'
+  | 'checking'
+  | 'failed'
+  | '2fa_select'
+  | '2fa_totp'
+  | '2fa_passkey_waiting'
+  | 'success_redirect';
+
+export default function TerminalLoginPage() {
   const router = useRouter();
-  const [authMode, setAuthMode] = useState<'password' | 'otp'>('password');
-  const [step, setStep] = useState<'email' | 'otp' | '2fa_challenge'>('email');
-  const [email, setEmail] = useState('s.shankhdhar1981@gmail.com');
-  const [password, setPassword] = useState('admin123');
+
+  // Terminal state
+  const [logs, setLogs] = useState<TerminalLog[]>([
+    {
+      id: 'boot-1',
+      type: 'system',
+      text: '================================================================================',
+    },
+    {
+      id: 'boot-2',
+      type: 'system',
+      text: 'PORTFOLIO ADMINISTRATIVE GATEWAY // HOST: PROD-NODE-01 // TLS 1.3 ACTIVE',
+    },
+    {
+      id: 'boot-3',
+      type: 'system',
+      text: '================================================================================',
+    },
+    {
+      id: 'boot-4',
+      type: 'info',
+      text: '[SYS] Architecture: Darwin x86_64 / Node.js Engine / MongoDB Atlas Connected',
+    },
+    {
+      id: 'boot-5',
+      type: 'info',
+      text: '[SYS] Security Protocol: Dual-Layer Authentication Gate (Password + 2FA / WebAuthn)',
+    },
+    {
+      id: 'boot-6',
+      type: 'warning',
+      text: '[!] Unauthorized access strictly monitored and recorded with client telemetry.',
+    },
+    {
+      id: 'boot-7',
+      type: 'system',
+      text: '--------------------------------------------------------------------------------',
+    },
+  ]);
+
+  const [step, setStep] = useState<TerminalStep>('email');
+  const [inputVal, setInputVal] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isSettingUp, setIsSettingUp] = useState(false);
-  const [setupMessage, setSetupMessage] = useState('Validating credentials...');
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const [dbStatus, setDbStatus] = useState<{ configured: boolean; connected: boolean } | null>(null);
 
-  // 2FA Challenge State
+  // Auth credentials collected in terminal
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [tempToken, setTempToken] = useState('');
-  const [twoFactorMethod, setTwoFactorMethod] = useState<'totp' | 'passkey' | 'both'>('totp');
-  const [challengeMode, setChallengeMode] = useState<'totp' | 'passkey'>('totp');
-  const [totpCode, setTotpCode] = useState('');
 
-  const otpInputRef = useRef<HTMLInputElement>(null);
-  const totpInputRef = useRef<HTMLInputElement>(null);
+  // 2FA options detected dynamically for this specific email
+  const [available2FAMethods, setAvailable2FAMethods] = useState<
+    { optionNumber: string; type: 'passkey' | 'totp'; label: string; desc: string }[]
+  >([]);
 
+  const terminalEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-scroll terminal to bottom whenever logs update
   useEffect(() => {
-    // If token exists, verify validity before redirecting
+    terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs, step]);
+
+  // Keep terminal input focused
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [step]);
+
+  // Check if already authenticated on initial load
+  useEffect(() => {
     const token = localStorage.getItem('adminToken');
     if (token) {
-      setIsSettingUp(true);
-      setSetupMessage('Checking active session...');
+      addLog('info', '[~] Existing session token detected in local storage. Validating...');
       fetch('/api/auth', { headers: { Authorization: `Bearer ${token}` } })
         .then((res) => res.json())
         .then((data) => {
           if (data.authenticated) {
-            setSetupMessage('Setting up the Admin Panel...');
-            setTimeout(() => router.replace('/'), 400);
+            addLog('success', `[✓] Session valid: Authenticated as ${data.email || 'Super Administrator'}`);
+            addLog('info', '[~] Launching Control Center...');
+            setStep('success_redirect');
+            setTimeout(() => router.replace('/'), 600);
           } else {
             localStorage.removeItem('adminToken');
-            setIsSettingUp(false);
+            addLog('warning', '[!] Prior session token expired or terminated. Please authenticate.');
           }
         })
         .catch(() => {
           localStorage.removeItem('adminToken');
-          setIsSettingUp(false);
         });
     }
-
-    // Check DB status & pre-fill configured admin email
-    fetch('/api/auth')
-      .then((res) => res.json())
-      .then((data) => {
-        setDbStatus({
-          configured: Boolean(data.dbConfigured),
-          connected: Boolean(data.dbConnected),
-        });
-        if (data.adminEmail) {
-          setEmail(data.adminEmail);
-        }
-      })
-      .catch(() => {});
   }, [router]);
 
-  // Resend cooldown timer
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const interval = setInterval(() => {
-      setResendCooldown((prev) => prev - 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [resendCooldown]);
+  const addLog = (
+    type: TerminalLog['type'],
+    text: string
+  ) => {
+    setLogs((prev) => [
+      ...prev,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        type,
+        text,
+      },
+    ]);
+  };
 
-  // Focus inputs on transition
-  useEffect(() => {
-    if (step === 'otp') {
-      setTimeout(() => otpInputRef.current?.focus(), 150);
-    } else if (step === '2fa_challenge' && challengeMode === 'totp') {
-      setTimeout(() => totpInputRef.current?.focus(), 150);
-    }
-  }, [step, challengeMode]);
-
-  // 1. Password Login Handler
-  const handlePasswordLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const targetEmail = email.trim().toLowerCase();
-
-    if (!targetEmail) {
-      toast.error('Please enter your administrative email');
-      return;
-    }
-
-    if (!password) {
-      toast.error('Please enter your administrator password');
-      return;
-    }
-
+  // 1. Password Verification Handler
+  const verifyPasswordAuth = async (targetEmail: string, targetPass: string) => {
+    setStep('checking');
     setLoading(true);
 
+    addLog('info', '[~] Handshaking with authentication authority...');
+    addLog('info', `[~] Checking administrative credentials for <${targetEmail}>...`);
+
     try {
+      // Simulate realistic terminal verification delay
+      await new Promise((r) => setTimeout(r, 450));
+
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'password',
           email: targetEmail,
-          password,
+          password: targetPass,
         }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.message || 'Authentication failed');
+        throw new Error(data.message || 'Authentication failed: Invalid credentials');
       }
 
-      // Check if Two-Factor Authentication challenge is required
+      addLog('success', '[✓] Primary credentials verified successfully.');
+
+      // Check if Two-Factor Authentication is required for this email
       if (data.requires2FA) {
         setTempToken(data.tempToken);
-        setTwoFactorMethod(data.twoFactorMethod || 'totp');
-        setChallengeMode(data.twoFactorMethod === 'passkey' ? 'passkey' : 'totp');
-        setStep('2fa_challenge');
+
+        addLog('warning', '[!] SECONDARY CHALLENGE: Two-Factor Authentication (2FA) is enforced.');
+        addLog('info', '--------------------------------------------------------------------------------');
+        addLog('info', 'Available 2FA Methods registered for this account:');
+
+        const methods: { optionNumber: string; type: 'passkey' | 'totp'; label: string; desc: string }[] = [];
+        let optIndex = 1;
+
+        // Only show options that are ACTUALLY registered for this email
+        if (data.hasPasskeys) {
+          methods.push({
+            optionNumber: String(optIndex++),
+            type: 'passkey',
+            label: 'Biometric Passkey',
+            desc: 'Hardware Touch ID / Face ID / Platform Security Key',
+          });
+        }
+
+        if (data.hasTotp) {
+          methods.push({
+            optionNumber: String(optIndex++),
+            type: 'totp',
+            label: 'Authenticator App (TOTP)',
+            desc: '6-digit time-based code from Google Authenticator',
+          });
+        }
+
+        // Fallback if requires2FA is true but specific flags weren't detailed
+        if (methods.length === 0) {
+          if (data.twoFactorMethod === 'passkey') {
+            methods.push({
+              optionNumber: '1',
+              type: 'passkey',
+              label: 'Biometric Passkey',
+              desc: 'Hardware Touch ID / Face ID',
+            });
+          } else {
+            methods.push({
+              optionNumber: '1',
+              type: 'totp',
+              label: 'Authenticator App (TOTP)',
+              desc: '6-digit time-based code from Google Authenticator',
+            });
+          }
+        }
+
+        setAvailable2FAMethods(methods);
+
+        methods.forEach((m) => {
+          addLog('info', `  [${m.optionNumber}] ${m.label} — ${m.desc}`);
+        });
+
+        addLog('info', '--------------------------------------------------------------------------------');
+        addLog(
+          'prompt',
+          `admin@gateway:~$ Select option [${methods.map((m) => m.optionNumber).join('/')}]:`
+        );
+
+        setStep('2fa_select');
         setLoading(false);
-        toast.info('Secondary authentication required. Please verify your 2FA credential.');
+        setInputVal('');
         return;
       }
 
+      // No 2FA required: Direct authorized session
       localStorage.setItem('adminToken', data.token);
       localStorage.setItem('adminEmail', data.email);
-      toast.success('Authentication verified!');
 
-      setIsSettingUp(true);
-      setSetupMessage('Setting up the Admin Panel...');
-      setTimeout(() => {
-        router.replace('/');
-      }, 500);
+      addLog('success', '[✓] Identity confirmed. Super Administrator role granted.');
+      addLog('success', '[✓] Cryptographic session token issued.');
+      addLog('info', '[~] Launching Control Center...');
+
+      setStep('success_redirect');
+      setTimeout(() => router.replace('/'), 700);
     } catch (err: any) {
-      toast.error(err.message || 'Failed to authenticate');
+      addLog('error', `[✗] ERROR: 401 Unauthorized — ${err.message || 'Invalid credentials.'}`);
+      addLog('warning', '[!] Authentication aborted.');
+      addLog('prompt', 'admin@gateway:~$ Press Enter or click Restart to retry...');
+
+      setStep('failed');
       setLoading(false);
+      setInputVal('');
     }
   };
 
-  // 2. Send OTP Request
-  const handleSendOTP = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const targetEmail = email.trim().toLowerCase();
-
-    if (!targetEmail) {
-      toast.error('Please enter an admin email address');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'sendOTP',
-          email: targetEmail,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || 'Failed to send verification code');
-      }
-
-      setStep('otp');
-      setResendCooldown(30);
-      toast.success(data.message || `Verification code sent to ${targetEmail}`);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to send verification code');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 3. Verify OTP Request
-  const handleVerifyOTP = async (e?: React.FormEvent, manualOtp?: string) => {
-    if (e) e.preventDefault();
-    const codeToVerify = (manualOtp || otp).replace(/\D/g, '').trim();
-
-    if (!codeToVerify || codeToVerify.length !== 6) {
-      toast.error('Please enter the 6-digit verification code');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'verifyOTP',
-          email: email.trim().toLowerCase(),
-          otp: codeToVerify,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || 'Invalid or expired verification code');
-      }
-
-      localStorage.setItem('adminToken', data.token);
-      localStorage.setItem('adminEmail', data.email);
-      toast.success('Security code verified!');
-
-      setIsSettingUp(true);
-      setSetupMessage('Setting up the Admin Panel...');
-      setTimeout(() => {
-        router.replace('/');
-      }, 500);
-    } catch (err: any) {
-      toast.error(err.message || 'Verification failed');
-      setLoading(false);
-    }
-  };
-
-  // 4. Verify 2FA TOTP (Authenticator App)
-  const handleVerify2FATOTP = async (e?: React.FormEvent, manualCode?: string) => {
-    if (e) e.preventDefault();
-    const code = (manualCode || totpCode).replace(/\D/g, '').trim();
-
-    if (!code || code.length !== 6) {
-      toast.error('Please enter the 6-digit code from your Authenticator app');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const res = await fetch('/api/auth/2fa', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'login-verify-totp',
-          tempToken,
-          code,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || 'Invalid 6-digit code');
-      }
-
-      localStorage.setItem('adminToken', data.token);
-      localStorage.setItem('adminEmail', data.email);
-      toast.success('Two-factor authentication verified!');
-
-      setIsSettingUp(true);
-      setSetupMessage('Setting up the Admin Panel...');
-      setTimeout(() => {
-        router.replace('/');
-      }, 500);
-    } catch (err: any) {
-      toast.error(err.message || '2FA verification failed');
-      setLoading(false);
-    }
-  };
-
-  // 5. Verify 2FA Passkey (Touch ID / Fingerprint / WebAuthn)
-  const handleVerify2FAPasskey = async () => {
+  // 2. WebAuthn Biometric Passkey Handler
+  const triggerBiometricPasskey = async () => {
     if (typeof window === 'undefined' || !window.PublicKeyCredential) {
-      toast.error('WebAuthn / Passkeys are not supported in this browser.');
+      addLog('error', '[✗] WebAuthn / Passkeys are not supported in this browser.');
       return;
     }
 
+    setStep('2fa_passkey_waiting');
     setLoading(true);
 
+    addLog('info', '[~] Requesting cryptographic WebAuthn challenge from server...');
+
     try {
-      // 1. Get challenge and allowed credentials from server
       const chalRes = await fetch('/api/auth/2fa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -310,7 +282,10 @@ export default function LoginPage() {
       }
 
       const { challenge, allowCredentials } = chalData;
-      const challengeBuffer = Uint8Array.from(atob(challenge.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+      const challengeBuffer = Uint8Array.from(
+        atob(challenge.replace(/-/g, '+').replace(/_/g, '/')),
+        (c) => c.charCodeAt(0)
+      );
 
       const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions = {
         challenge: challengeBuffer,
@@ -324,7 +299,8 @@ export default function LoginPage() {
         userVerification: 'required',
       };
 
-      // 2. Trigger native Touch ID / Face ID / Passkey prompt
+      addLog('info', '[~] Prompting hardware biometric device (Touch ID / Face ID)...');
+
       const assertion = (await navigator.credentials.get({
         publicKey: publicKeyCredentialRequestOptions,
       })) as PublicKeyCredential | null;
@@ -333,13 +309,14 @@ export default function LoginPage() {
         throw new Error('Biometric verification cancelled.');
       }
 
+      addLog('info', '[~] Biometric assertion captured. Verifying signature with server...');
+
       const rawResponse = assertion.response as AuthenticatorAssertionResponse;
       const clientDataJSON = btoa(String.fromCharCode(...new Uint8Array(rawResponse.clientDataJSON)))
         .replace(/\+/g, '-')
         .replace(/\//g, '_')
         .replace(/=/g, '');
 
-      // 3. Verify assertion with server
       const verifyRes = await fetch('/api/auth/2fa', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -358,458 +335,444 @@ export default function LoginPage() {
 
       localStorage.setItem('adminToken', verifyData.token);
       localStorage.setItem('adminEmail', verifyData.email);
-      toast.success('Biometric passkey verified!');
 
-      setIsSettingUp(true);
-      setSetupMessage('Setting up the Admin Panel...');
-      setTimeout(() => {
-        router.replace('/');
-      }, 500);
+      addLog('success', '[✓] Biometric assertion validated successfully!');
+      addLog('success', '[✓] Super Administrator session authorized.');
+      addLog('info', '[~] Launching Control Center...');
+
+      setStep('success_redirect');
+      setTimeout(() => router.replace('/'), 700);
     } catch (err: any) {
       if (err.name === 'NotAllowedError') {
-        toast.error('Biometric verification timed out or was dismissed.');
+        addLog('warning', '[!] Biometric verification prompt was dismissed or timed out.');
       } else {
-        toast.error(err.message || 'Biometric authentication failed');
+        addLog('error', `[✗] Biometric failure: ${err.message || 'Verification rejected'}`);
       }
+
+      addLog(
+        'prompt',
+        `admin@gateway:~$ Select option [${available2FAMethods.map((m) => m.optionNumber).join('/')}] or type "retry":`
+      );
+
+      setStep('2fa_select');
       setLoading(false);
+      setInputVal('');
     }
   };
 
-  // Transition screen when setting up panel
-  if (isSettingUp) {
-    return (
-      <div className="min-h-screen bg-[#0c0d14] flex flex-col items-center justify-center p-6 text-center select-none relative overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative z-10 max-w-sm w-full space-y-6 flex flex-col items-center">
-          <div className="relative">
-            <div className="h-20 w-20 rounded-3xl bg-gradient-to-br from-red-600/20 via-rose-600/20 to-transparent border border-red-500/30 flex items-center justify-center text-red-400 shadow-2xl shadow-red-950/50">
-              <FiShield className="h-10 w-10 text-red-400 animate-pulse" />
-            </div>
-            <span className="absolute -top-1 -right-1 flex h-4 w-4">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-[#0c0d14]" />
-            </span>
-          </div>
+  // 3. TOTP Verification Handler
+  const verifyTotpCode = async (code: string) => {
+    const cleanCode = code.replace(/\D/g, '').trim();
+    if (cleanCode.length !== 6) {
+      addLog('error', '[✗] Error: 6-digit code is required. Please check your Authenticator app.');
+      addLog('prompt', 'admin@gateway:~$ Enter 6-digit Authenticator code:');
+      setInputVal('');
+      return;
+    }
 
-          <div className="space-y-2">
-            <h2 className="text-xl font-bold text-white tracking-tight">Access Granted</h2>
-            <p className="text-xs sm:text-sm text-slate-300 font-mono flex items-center justify-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
-              <span>{setupMessage}</span>
-            </p>
-          </div>
+    setStep('checking');
+    setLoading(true);
 
-          <div className="w-full bg-white/5 border border-white/10 rounded-full h-1.5 overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-red-600 via-rose-500 to-emerald-500 rounded-full animate-pulse w-3/4" />
-          </div>
-        </div>
-      </div>
-    );
-  }
+    addLog('info', `[~] Verifying one-time security code [${cleanCode}]...`);
+
+    try {
+      const res = await fetch('/api/auth/2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'login-verify-totp',
+          tempToken,
+          code: cleanCode,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || 'Invalid or expired 6-digit code');
+      }
+
+      localStorage.setItem('adminToken', data.token);
+      localStorage.setItem('adminEmail', data.email);
+
+      addLog('success', '[✓] Two-Factor TOTP code verified successfully!');
+      addLog('success', '[✓] Super Administrator session authorized.');
+      addLog('info', '[~] Launching Control Center...');
+
+      setStep('success_redirect');
+      setTimeout(() => router.replace('/'), 700);
+    } catch (err: any) {
+      addLog('error', `[✗] Error: ${err.message || 'Verification failed.'}`);
+      addLog('prompt', 'admin@gateway:~$ Enter 6-digit Authenticator code (or type "back"):');
+
+      setStep('2fa_totp');
+      setLoading(false);
+      setInputVal('');
+    }
+  };
+
+  // Handle Terminal Form Submit
+  const handleTerminalSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading) return;
+
+    const trimmed = inputVal.trim();
+
+    // Built-in terminal commands
+    if (trimmed.toLowerCase() === 'clear') {
+      setLogs([
+        {
+          id: `clear-${Date.now()}`,
+          type: 'system',
+          text: 'PORTFOLIO ADMINISTRATIVE GATEWAY // TERMINAL BUFFER CLEARED',
+        },
+      ]);
+      setInputVal('');
+      return;
+    }
+
+    if (trimmed.toLowerCase() === 'restart' || trimmed.toLowerCase() === 'reset') {
+      restartSession();
+      return;
+    }
+
+    if (trimmed.toLowerCase() === 'help') {
+      addLog('user', `> ${trimmed}`);
+      addLog('info', 'Supported Terminal Commands:');
+      addLog('info', '  clear    - Clear terminal log buffer');
+      addLog('info', '  restart  - Reboot authentication session to email prompt');
+      addLog('info', '  help     - Display this command manual');
+      setInputVal('');
+      return;
+    }
+
+    // Step: Failed -> User presses Enter to restart
+    if (step === 'failed') {
+      restartSession();
+      return;
+    }
+
+    // Step 1: Email Prompt
+    if (step === 'email') {
+      if (!trimmed) {
+        addLog('error', '[✗] Error: Administrative email is required.');
+        addLog('prompt', 'admin@gateway:~$ Enter administrative email:');
+        return;
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(trimmed)) {
+        addLog('user', `> ${trimmed}`);
+        addLog('error', '[✗] Error: Invalid email syntax. Please enter a valid address.');
+        addLog('prompt', 'admin@gateway:~$ Enter administrative email:');
+        setInputVal('');
+        return;
+      }
+
+      addLog('user', `> ${trimmed}`);
+      setEmail(trimmed.toLowerCase());
+      addLog('prompt', `admin@gateway:~$ Enter password for <${trimmed.toLowerCase()}>:`);
+      setStep('password');
+      setInputVal('');
+      return;
+    }
+
+    // Step 2: Password Prompt
+    if (step === 'password') {
+      if (!trimmed) {
+        addLog('error', '[✗] Error: Password cannot be blank.');
+        addLog('prompt', `admin@gateway:~$ Enter password for <${email}>:`);
+        return;
+      }
+
+      addLog('user', `> ${'•'.repeat(trimmed.length)}`);
+      setPassword(trimmed);
+      setInputVal('');
+      verifyPasswordAuth(email, trimmed);
+      return;
+    }
+
+    // Step 3: 2FA Selection
+    if (step === '2fa_select') {
+      addLog('user', `> ${trimmed}`);
+
+      if (trimmed.toLowerCase() === 'retry') {
+        const passkeyMethod = available2FAMethods.find((m) => m.type === 'passkey');
+        if (passkeyMethod) {
+          triggerBiometricPasskey();
+          return;
+        }
+      }
+
+      const selectedMethod = available2FAMethods.find((m) => m.optionNumber === trimmed);
+
+      if (!selectedMethod) {
+        addLog('error', `[✗] Unrecognized option "${trimmed}".`);
+        addLog(
+          'prompt',
+          `admin@gateway:~$ Select option [${available2FAMethods.map((m) => m.optionNumber).join('/')}]:`
+        );
+        setInputVal('');
+        return;
+      }
+
+      setInputVal('');
+
+      if (selectedMethod.type === 'passkey') {
+        triggerBiometricPasskey();
+      } else if (selectedMethod.type === 'totp') {
+        addLog('info', '[~] Selected: Authenticator App (TOTP).');
+        addLog('prompt', 'admin@gateway:~$ Enter 6-digit Authenticator code:');
+        setStep('2fa_totp');
+      }
+      return;
+    }
+
+    // Step 4: 2FA TOTP Code Entry
+    if (step === '2fa_totp') {
+      addLog('user', `> ${trimmed}`);
+
+      if (trimmed.toLowerCase() === 'back') {
+        addLog(
+          'prompt',
+          `admin@gateway:~$ Select option [${available2FAMethods.map((m) => m.optionNumber).join('/')}]:`
+        );
+        setStep('2fa_select');
+        setInputVal('');
+        return;
+      }
+
+      verifyTotpCode(trimmed);
+    }
+  };
+
+  const restartSession = () => {
+    setEmail('');
+    setPassword('');
+    setTempToken('');
+    setAvailable2FAMethods([]);
+    setStep('email');
+    setLoading(false);
+    setInputVal('');
+
+    setLogs([
+      {
+        id: `restart-${Date.now()}`,
+        type: 'system',
+        text: 'PORTFOLIO ADMINISTRATIVE GATEWAY // SESSION REINITIALIZED',
+      },
+      {
+        id: `restart-2-${Date.now()}`,
+        type: 'info',
+        text: '[SYS] Ready for administrative authentication.',
+      },
+      {
+        id: `restart-3-${Date.now()}`,
+        type: 'prompt',
+        text: 'admin@gateway:~$ Enter administrative email:',
+      },
+    ]);
+  };
 
   return (
-    <div className="min-h-screen bg-[#09090b] flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden selection:bg-red-500 selection:text-white">
-      {/* Background Ambience */}
-      <div className="absolute top-1/4 -left-32 w-96 h-96 bg-red-600/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 -right-32 w-96 h-96 bg-rose-600/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen bg-[#07080D] flex items-center justify-center p-3 sm:p-6 lg:p-10 font-mono text-xs sm:text-sm select-none antialiased relative overflow-hidden">
+      {/* Background terminal matrix glow with subtle crimson ambient light */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[500px] bg-red-600/5 rounded-full blur-[130px] pointer-events-none" />
+      <div className="fixed inset-0 pointer-events-none opacity-20 bg-[radial-gradient(#271015_1px,transparent_1px)] [background-size:16px_16px]" />
 
-      <div className="w-full max-w-md space-y-6 relative z-10">
-        {/* Brand Header */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center h-16 w-16 rounded-2xl bg-gradient-to-br from-red-600/20 via-rose-600/20 to-transparent border border-red-500/30 text-red-500 shadow-xl shadow-red-950/30 mb-2">
-            <FiShield className="h-8 w-8" />
+      {/* Red & Black Terminal Window Frame */}
+      <div className="relative w-full max-w-4xl bg-[#090A10] border border-red-500/20 rounded-2xl shadow-2xl shadow-black/95 overflow-hidden flex flex-col h-[85vh] max-h-[760px]">
+        {/* Terminal Header Bar */}
+        <div className="shrink-0 bg-[#0E1018] border-b border-red-500/20 px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full bg-[#EF4444] border border-[#DC2626]/60 inline-block shadow-xs shadow-red-900/50" />
+            <span className="h-3 w-3 rounded-full bg-[#F59E0B] border border-[#D97706]/60 inline-block" />
+            <span className="h-3 w-3 rounded-full bg-[#10B981] border border-[#059669]/60 inline-block" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-            Control Center
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-400 font-medium">
-            Administrative Management &amp; Cloud Deployment Hub
-          </p>
+
+          <div className="flex items-center gap-2 text-slate-300 text-xs font-semibold">
+            <FiTerminal className="h-3.5 w-3.5 text-red-500" />
+            <span>admin@portfolio-security-gateway: ~</span>
+          </div>
+
+          <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            <span className="hidden sm:inline font-mono">TLS 1.3</span>
+            <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" title="Gateway Online" />
+          </div>
         </div>
 
-        {/* Card Stage */}
-        <div className="bg-[#12131c] border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-xl space-y-6">
-
-          {/* ========================================================================= */}
-          {/* STAGE 1: 2FA CHALLENGE VERIFICATION SCREEN */}
-          {/* ========================================================================= */}
-          {step === '2fa_challenge' ? (
-            <div className="space-y-5">
-              <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep('email');
-                    setTempToken('');
-                  }}
-                  className="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
-                >
-                  <FiArrowLeft className="h-3 w-3" />
-                  <span>Back to Sign In</span>
-                </button>
-                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                  Password OK
-                </span>
-              </div>
-
-              <div className="text-center space-y-1">
-                <h3 className="text-lg font-bold text-white tracking-tight flex items-center justify-center gap-2">
-                  <FiShield className="h-4 w-4 text-red-400" />
-                  <span>Two-Factor Authentication</span>
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Verify your identity to complete administrative sign in.
-                </p>
-              </div>
-
-              {/* Mode Switcher if both or passkey available */}
-              {(twoFactorMethod === 'both' || twoFactorMethod === 'passkey') && (
-                <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-black/40 border border-white/10">
-                  <button
-                    type="button"
-                    onClick={() => setChallengeMode('passkey')}
-                    className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      challengeMode === 'passkey'
-                        ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <FaFingerprint className="h-3.5 w-3.5" />
-                    <span>Touch ID / Passkey</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setChallengeMode('totp')}
-                    className={`py-2 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      challengeMode === 'totp'
-                        ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <FiSmartphone className="h-3.5 w-3.5" />
-                    <span>Authenticator App</span>
-                  </button>
+        {/* Terminal Logs Canvas */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-2 font-mono custom-scrollbar text-[#E2E8F0]">
+          {logs.map((log) => {
+            if (log.type === 'system') {
+              return (
+                <div key={log.id} className="text-[#52525B] select-none text-[11px] sm:text-xs">
+                  {log.text}
                 </div>
-              )}
+              );
+            }
+            if (log.type === 'info') {
+              return (
+                <div key={log.id} className="text-slate-300">
+                  {log.text}
+                </div>
+              );
+            }
+            if (log.type === 'success') {
+              return (
+                <div key={log.id} className="text-[#34D399] font-bold">
+                  {log.text}
+                </div>
+              );
+            }
+            if (log.type === 'error') {
+              return (
+                <div key={log.id} className="text-red-400 font-bold">
+                  {log.text}
+                </div>
+              );
+            }
+            if (log.type === 'warning') {
+              return (
+                <div key={log.id} className="text-rose-400">
+                  {log.text}
+                </div>
+              );
+            }
+            if (log.type === 'user') {
+              return (
+                <div key={log.id} className="text-white font-bold pl-2 border-l-2 border-red-500/60">
+                  {log.text}
+                </div>
+              );
+            }
+            return (
+              <div key={log.id} className="text-red-400 font-semibold mt-2">
+                {log.text}
+              </div>
+            );
+          })}
 
-              {/* Option A: Passkey / Biometrics Challenge */}
-              {challengeMode === 'passkey' && (
-                <div className="space-y-4 pt-2 text-center">
-                  <div className="p-6 rounded-2xl bg-black/50 border border-white/10 space-y-3">
-                    <div className="h-16 w-16 rounded-3xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mx-auto">
-                      <FaFingerprint className="h-8 w-8 animate-pulse" />
-                    </div>
-                    <p className="text-xs text-slate-300">
-                      Click below to verify with your registered device Touch ID, Face ID, or Security Key.
-                    </p>
-                  </div>
+          {/* Active Prompt Line */}
+          {step !== 'success_redirect' && (
+            <div className="pt-2">
+              <div className="text-red-400 font-semibold mb-1">
+                {step === 'email' && 'admin@gateway:~$ Enter administrative email:'}
+                {step === 'password' && `admin@gateway:~$ Enter password for <${email}>:`}
+                {step === '2fa_select' &&
+                  `admin@gateway:~$ Select option [${available2FAMethods.map((m) => m.optionNumber).join('/')}]:`}
+                {step === '2fa_totp' && 'admin@gateway:~$ Enter 6-digit Authenticator code:'}
+                {step === '2fa_passkey_waiting' && 'admin@gateway:~$ Awaiting biometric verification on device...'}
+                {step === 'checking' && 'admin@gateway:~$ [~] Verifying credentials with authorization authority...'}
+                {step === 'failed' && 'admin@gateway:~$ Press Enter to restart authentication session...'}
+              </div>
 
-                  <button
-                    type="button"
+              {/* Terminal Interactive Input Form */}
+              {step !== 'checking' && step !== '2fa_passkey_waiting' && (
+                <form onSubmit={handleTerminalSubmit} className="flex items-center gap-2 text-white">
+                  <span className="text-red-500 select-none font-bold">&gt;</span>
+                  <input
+                    ref={inputRef}
+                    type={step === 'password' && !showPassword ? 'password' : 'text'}
+                    value={inputVal}
+                    onChange={(e) => setInputVal(e.target.value)}
                     disabled={loading}
-                    onClick={handleVerify2FAPasskey}
-                    className="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {loading ? (
-                      <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <FaFingerprint className="h-4 w-4" />
-                        <span>Verify with Touch ID / Passkey</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              )}
+                    autoComplete="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
+                    placeholder={
+                      step === 'email'
+                        ? 'Type your email and press Enter...'
+                        : step === 'password'
+                        ? 'Type administrator password...'
+                        : step === '2fa_select'
+                        ? 'Type 1 or 2 and press Enter...'
+                        : step === '2fa_totp'
+                        ? '123456'
+                        : 'Press Enter...'
+                    }
+                    className="flex-1 bg-transparent border-none outline-none text-[#F8FAFC] font-mono text-xs sm:text-sm placeholder-slate-600 caret-red-500"
+                  />
 
-              {/* Option B: TOTP Authenticator App Challenge */}
-              {challengeMode === 'totp' && (
-                <form onSubmit={handleVerify2FATOTP} className="space-y-4 pt-1">
-                  <div className="space-y-1.5 text-center">
-                    <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold">
-                      Enter 6-Digit Code from Authenticator App
-                    </label>
-                    <div className="relative">
-                      <FiKey className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                      <input
-                        ref={totpInputRef}
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
-                        autoFocus
-                        value={totpCode}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                          setTotpCode(val);
-                          if (val.length === 6) {
-                            handleVerify2FATOTP(undefined, val);
-                          }
-                        }}
-                        placeholder="&bull;&bull;&bull;&bull;&bull;&bull;"
-                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/40 border border-white/10 text-white text-center font-mono text-xl tracking-[0.4em] font-bold focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-colors"
-                      />
-                    </div>
-                    <p className="text-[11px] text-slate-500">
-                      Open Google Authenticator, Microsoft Authenticator, or 1Password.
-                    </p>
-                  </div>
+                  {step === 'password' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-slate-500 hover:text-white px-2 py-1 text-xs cursor-pointer"
+                      title={showPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showPassword ? <FiEyeOff className="h-3.5 w-3.5" /> : <FiEye className="h-3.5 w-3.5" />}
+                    </button>
+                  )}
 
                   <button
                     type="submit"
-                    disabled={loading || totpCode.length !== 6}
-                    className="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    className="hidden sm:inline-block px-3 py-1 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white border border-red-500/30 rounded text-xs cursor-pointer transition-all shadow-sm shadow-red-950/50"
                   >
-                    {loading ? (
-                      <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <FiCheckCircle className="h-4 w-4" />
-                        <span>Verify 2FA &amp; Access Dashboard</span>
-                      </>
-                    )}
+                    Enter ↵
                   </button>
                 </form>
               )}
             </div>
-          ) : (
-            <>
-              {/* Mode Switcher Tabs */}
-              <div className="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-black/40 border border-white/10">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('password');
-                    setStep('email');
-                  }}
-                  className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    authMode === 'password'
-                      ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Password Access
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAuthMode('otp');
-                    setStep('email');
-                  }}
-                  className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    authMode === 'otp'
-                      ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md'
-                      : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  OTP Code Access
-                </button>
-              </div>
-
-              {/* Mode A: Password Login Form */}
-              {authMode === 'password' && (
-                <form onSubmit={handlePasswordLogin} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold">
-                      Administrator Email
-                    </label>
-                    <div className="relative">
-                      <FiMail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                      <input
-                        type="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="admin@example.com"
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-colors font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold">
-                      Administrator Password
-                    </label>
-                    <div className="relative">
-                      <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter security password"
-                        className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-colors font-mono"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white transition-colors cursor-pointer"
-                      >
-                        {showPassword ? <FiEyeOff className="h-4 w-4" /> : <FiEye className="h-4 w-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 mt-2"
-                  >
-                    {loading ? (
-                      <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <span>Verify &amp; Access Console</span>
-                        <FiArrowRight className="h-4 w-4" />
-                      </>
-                    )}
-                  </button>
-                </form>
-              )}
-
-              {/* Mode B: OTP Verification Step 1: Email */}
-              {authMode === 'otp' && step === 'email' && (
-                <form onSubmit={handleSendOTP} className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold">
-                      Administrator Email
-                    </label>
-                    <div className="relative">
-                      <FiMail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                      <input
-                        type="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="admin@example.com"
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-colors font-mono"
-                      />
-                    </div>
-                    <p className="text-[11px] text-slate-500">
-                      A 6-digit one-time security code will be sent to your email.
-                    </p>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-3 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {loading ? (
-                      <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <span>Send Verification Code</span>
-                        <FiArrowRight className="h-4 w-4" />
-                      </>
-                    )}
-                  </button>
-                </form>
-              )}
-
-              {/* Mode B: OTP Verification Step 2: Code Verification */}
-              {authMode === 'otp' && step === 'otp' && (
-                <form onSubmit={(e) => handleVerifyOTP(e)} className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => setStep('email')}
-                      className="text-xs text-slate-400 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
-                    >
-                      <FiArrowLeft className="h-3 w-3" />
-                      <span>Change Email</span>
-                    </button>
-                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                      Code Dispatched
-                    </span>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-mono uppercase tracking-wider text-slate-400 font-semibold text-center">
-                      Enter 6-Digit Code
-                    </label>
-                    <div className="relative">
-                      <FiKey className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                      <input
-                        ref={otpInputRef}
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
-                        autoFocus
-                        value={otp}
-                        onChange={(e) => {
-                          const val = e.target.value.replace(/\D/g, '').slice(0, 6);
-                          setOtp(val);
-                          if (val.length === 6) {
-                            handleVerifyOTP(undefined, val);
-                          }
-                        }}
-                        placeholder="&bull;&bull;&bull;&bull;&bull;&bull;"
-                        className="w-full pl-10 pr-4 py-3 rounded-xl bg-black/40 border border-white/10 text-white text-center font-mono text-xl tracking-[0.4em] font-bold focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-colors"
-                      />
-                    </div>
-                    <p className="text-[11px] text-slate-400 text-center">
-                      Verification sent to <span className="text-slate-200 font-mono font-medium">{email}</span>
-                    </p>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading || otp.length !== 6}
-                    className="w-full py-3.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    {loading ? (
-                      <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <>
-                        <FiCheckCircle className="h-4 w-4" />
-                        <span>Verify &amp; Access Dashboard</span>
-                      </>
-                    )}
-                  </button>
-
-                  <div className="pt-1 text-center">
-                    {resendCooldown > 0 ? (
-                      <p className="text-xs text-slate-500 font-mono">
-                        Resend available in {resendCooldown}s
-                      </p>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={loading}
-                        onClick={() => handleSendOTP()}
-                        className="text-xs font-medium text-red-400 hover:text-red-300 inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-                      >
-                        <FiRotateCw className="h-3.5 w-3.5" />
-                        <span>Resend Code</span>
-                      </button>
-                    )}
-                  </div>
-                </form>
-              )}
-
-              {/* Database Connectivity Status Indicator */}
-              <div className="pt-3 border-t border-white/10 flex items-center justify-between text-xs font-mono">
-                <span className="text-slate-500">Security Node:</span>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`h-2 w-2 rounded-full ${
-                      dbStatus?.connected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
-                    }`}
-                  />
-                  <span className={dbStatus?.connected ? 'text-emerald-400' : 'text-slate-400'}>
-                    {dbStatus?.connected ? 'Database Connected' : 'Connecting DB...'}
-                  </span>
-                </div>
-              </div>
-            </>
           )}
 
+          {/* Quick-action buttons when 2FA is needed or failed */}
+          {step === '2fa_select' && (
+            <div className="flex flex-wrap gap-2.5 pt-3">
+              {available2FAMethods.map((m) => (
+                <button
+                  key={m.optionNumber}
+                  type="button"
+                  onClick={() => {
+                    if (m.type === 'passkey') {
+                      triggerBiometricPasskey();
+                    } else {
+                      addLog('info', '[~] Selected: Authenticator App (TOTP).');
+                      addLog('prompt', 'admin@gateway:~$ Enter 6-digit Authenticator code:');
+                      setStep('2fa_totp');
+                    }
+                  }}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-300 hover:text-white font-mono text-xs cursor-pointer transition-all shadow-sm shadow-red-950/40"
+                >
+                  {m.type === 'passkey' ? <FaFingerprint className="h-3.5 w-3.5 text-red-400" /> : <FiSmartphone className="h-3.5 w-3.5 text-red-400" />}
+                  <span>Option [{m.optionNumber}]: {m.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {step === 'failed' && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={restartSession}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-300 hover:text-white font-mono text-xs cursor-pointer transition-all"
+              >
+                <FiRotateCw className="h-3.5 w-3.5" />
+                <span>Restart Session</span>
+              </button>
+            </div>
+          )}
+
+          <div ref={terminalEndRef} />
         </div>
 
-        {/* Security Disclaimers */}
-        <p className="text-center text-[11px] text-slate-500 font-mono">
-          Antigravity Security Shield &bull; AES-256 JWT Authenticated
-        </p>
+        {/* Terminal Status Footer */}
+        <div className="shrink-0 bg-[#07080C] border-t border-red-500/20 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-400">
+          <div className="flex items-center gap-3">
+            <span className="text-red-400">admin@gateway</span>
+            <span>•</span>
+            <span>Type <code className="text-white">clear</code> to clean</span>
+            <span>•</span>
+            <span>Type <code className="text-white">restart</code> to reboot</span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 text-red-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+              <span>Auth Node Ready</span>
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );

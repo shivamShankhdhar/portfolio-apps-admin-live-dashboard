@@ -4,12 +4,17 @@ import React, { useState, useEffect } from 'react';
 import { FiSave, FiUser, FiLinkedin, FiGithub, FiMail, FiCheck } from 'react-icons/fi';
 import { toast } from 'sonner';
 
+import { useProfile, useUpdateProfile } from '@/hooks/useProfile';
+
 interface ProfileManagerProps {
   initialProfile?: any;
   onProfileUpdated?: (updated: any) => void;
 }
 
 export default function ProfileManager({ initialProfile, onProfileUpdated }: ProfileManagerProps = {}) {
+  const { data: queryProfile } = useProfile();
+  const updateProfileMutation = useUpdateProfile();
+
   const [profile, setProfile] = useState<any>(initialProfile || {
     name: '',
     bio: '',
@@ -26,24 +31,12 @@ export default function ProfileManager({ initialProfile, onProfileUpdated }: Pro
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    if (initialProfile) {
-      setProfile(initialProfile);
-      setRolesInput(initialProfile.roles?.join(', ') || '');
+    const active = queryProfile || initialProfile;
+    if (active) {
+      setProfile(active);
+      setRolesInput(active.roles?.join(', ') || '');
     }
-  }, [initialProfile]);
-
-  useEffect(() => {
-    fetch('/api/profile?t=' + Date.now(), { cache: 'no-store' })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data) {
-          setProfile(data);
-          setRolesInput(data.roles?.join(', ') || '');
-          onProfileUpdated?.(data);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  }, [queryProfile, initialProfile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,22 +50,14 @@ export default function ProfileManager({ initialProfile, onProfileUpdated }: Pro
           .filter(Boolean),
       };
 
-      const res = await fetch('/api/profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) throw new Error('Failed to update profile');
-      const updated = await res.json();
+      const updated = await updateProfileMutation.mutateAsync(payload);
       setProfile(updated);
       onProfileUpdated?.(updated);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('profileUpdated', { detail: updated }));
       }
-      toast.success('Profile details updated successfully');
-    } catch (err: any) {
-      toast.error(err.message || 'Error saving profile');
+    } catch {
+      // Error handled by mutation
     } finally {
       setIsSaving(false);
     }

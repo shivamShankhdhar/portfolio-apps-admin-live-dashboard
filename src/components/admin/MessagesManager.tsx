@@ -2,41 +2,32 @@
 
 import React, { useState } from 'react';
 import { FiTrash2, FiMail, FiCalendar } from 'react-icons/fi';
-import { toast } from 'sonner';
 import ConfirmDialog from './ConfirmDialog';
+import { useDeleteMessage, useMessages, ContactMessage } from '@/hooks/useMessages';
 
-export interface ContactMessage {
-  _id: string;
-  name: string;
-  email: string;
-  message: string;
-  createdAt: string;
-  read?: boolean;
-}
+export type { ContactMessage };
 
 export default function MessagesManager({
-  messages,
+  messages: propMessages,
   onReload,
 }: {
-  messages: ContactMessage[];
-  onReload: () => void;
+  messages?: ContactMessage[];
+  onReload?: () => void;
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const { data: queryMessages = [] } = useMessages();
+  const deleteMessageMutation = useDeleteMessage();
+
+  const messages = propMessages ?? queryMessages;
 
   const handleDeleteConfirmed = async () => {
     if (!deletingId) return;
-    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/messages/${deletingId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete');
-      toast.success('Message deleted');
+      await deleteMessageMutation.mutateAsync(deletingId);
       setDeletingId(null);
-      onReload();
+      if (onReload) onReload();
     } catch {
-      toast.error('Failed to delete message');
-    } finally {
-      setIsDeleting(false);
+      // Error handled by mutation
     }
   };
 
@@ -44,12 +35,14 @@ export default function MessagesManager({
     <div className="space-y-6">
       <ConfirmDialog
         open={!!deletingId}
-        onOpenChange={(open) => { if (!open) setDeletingId(null); }}
+        onOpenChange={(open) => {
+          if (!open) setDeletingId(null);
+        }}
         title="Delete Message"
         description="This message will be permanently removed from the database. This action cannot be undone."
         confirmLabel="Delete Message"
         variant="danger"
-        loading={isDeleting}
+        loading={deleteMessageMutation.isPending}
         onConfirm={handleDeleteConfirmed}
       />
 
@@ -86,7 +79,8 @@ export default function MessagesManager({
                   </span>
                   <button
                     onClick={() => setDeletingId(msg._id)}
-                    className="p-1.5 text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+                    disabled={deleteMessageMutation.isPending}
+                    className="p-1.5 text-rose-400 hover:text-rose-300 transition-colors cursor-pointer disabled:opacity-50"
                   >
                     <FiTrash2 className="h-4 w-4" />
                   </button>

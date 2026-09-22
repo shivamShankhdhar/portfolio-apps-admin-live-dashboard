@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import Sidebar, { AdminTab } from '@/components/admin/Sidebar';
+import CoreSidebar from '@/components/admin/CoreSidebar';
 import Header from '@/components/admin/Header';
 import AppsManager from '@/components/admin/AppsManager';
 import ProjectsManager from '@/components/admin/ProjectsManager';
@@ -14,34 +16,57 @@ import EducationManager from '@/components/admin/EducationManager';
 import MessagesManager from '@/components/admin/MessagesManager';
 import DashboardManager from '@/components/admin/DashboardManager';
 import SecuritySettingsModal from '@/components/admin/SecuritySettingsModal';
-import { AppItem } from '@/lib/defaultData';
+import ConfirmDialog from '@/components/admin/ConfirmDialog';
 import { toast } from 'sonner';
+import { FiRefreshCw, FiPlus } from 'react-icons/fi';
+
+import { useAuthSession } from '@/hooks/useAuthSession';
+import { useTwoFactorStatus } from '@/hooks/useTwoFactor';
+import { useApps } from '@/hooks/useApps';
+import { useProjects } from '@/hooks/useProjects';
+import { useProfile } from '@/hooks/useProfile';
+import {
+  useSkills,
+  useExperience,
+  useEducation,
+  useCertifications,
+} from '@/hooks/usePortfolioCollections';
+import { useMessages } from '@/hooks/useMessages';
 
 type AuthStatus = 'validating' | 'setting_up' | 'authorized' | 'unauthorized';
 
 export default function AdminDashboardPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [authStatus, setAuthStatus] = useState<AuthStatus>('validating');
   const [statusMessage, setStatusMessage] = useState('Validating Administrative Credentials...');
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
-  const [adminEmail, setAdminEmail] = useState('');
-  const [dbConnected, setDbConnected] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
-  const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
-  const [passkeyCount, setPasskeyCount] = useState(0);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
-  // Database Collections State
-  const [apps, setApps] = useState<AppItem[]>([]);
-  const [projects, setProjects] = useState<any[]>([]);
-  const [profile, setProfile] = useState<any>(null);
-  const [skills, setSkills] = useState<any[]>([]);
-  const [experience, setExperience] = useState<any[]>([]);
-  const [education, setEducation] = useState<any[]>([]);
-  const [certifications, setCertifications] = useState<any[]>([]);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  // TanStack Query Hooks
+  const { data: authData, isLoading: isAuthLoading } = useAuthSession();
+  const { data: twoFactorData } = useTwoFactorStatus();
+  const { data: apps = [] } = useApps();
+  const { data: projects = [] } = useProjects();
+  const { data: profile } = useProfile();
+  const { data: skills = [] } = useSkills();
+  const { data: experience = [] } = useExperience();
+  const { data: education = [] } = useEducation();
+  const { data: certifications = [] } = useCertifications();
+  const { data: messages = [] } = useMessages();
+
+  // Derived state from queries
+  const adminEmail =
+    authData?.email ||
+    (typeof window !== 'undefined' ? localStorage.getItem('adminEmail') : '') ||
+    'Admin';
+  const dbConnected = Boolean(authData?.dbConnected);
+  const twoFactorEnabled = Boolean(twoFactorData?.twoFactorEnabled);
+  const passkeyCount = twoFactorData?.passkeys?.length ?? 0;
+  const loading = isAuthLoading;
 
   // Sync tab from query param if navigating back from /privacy
   useEffect(() => {
@@ -65,170 +90,49 @@ export default function AdminDashboardPage() {
     }
   }, []);
 
-  // Load all collections
+  // Invalidate queries on manual refresh
   const loadData = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      const token = localStorage.getItem('adminToken');
-      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-
-      // 1. Auth & DB Health check
-      const authRes = await fetch('/api/auth', { headers });
-      if (authRes.ok) {
-        const authData = await authRes.json();
-        setDbConnected(Boolean(authData.dbConnected));
-        if (authData.email) setAdminEmail(authData.email);
-      }
-
-      // 2. Apps & Games
-      const appsRes = await fetch('/api/apps');
-      if (appsRes.ok) {
-        const appsData = await appsRes.json();
-        setApps(Array.isArray(appsData) ? appsData : []);
-      }
-
-      // 3. Projects
-      const projectsRes = await fetch('/api/projects');
-      if (projectsRes.ok) {
-        const projData = await projectsRes.json();
-        setProjects(Array.isArray(projData) ? projData : []);
-      }
-
-      // 4. Skills
-      const skillsRes = await fetch('/api/skills');
-      if (skillsRes.ok) {
-        const skillsData = await skillsRes.json();
-        setSkills(Array.isArray(skillsData) ? skillsData : []);
-      }
-
-      // 5. Experience
-      const expRes = await fetch('/api/experience');
-      if (expRes.ok) {
-        const expData = await expRes.json();
-        setExperience(Array.isArray(expData) ? expData : []);
-      }
-
-      // 6. Education
-      const eduRes = await fetch('/api/education');
-      if (eduRes.ok) {
-        const eduData = await eduRes.json();
-        setEducation(Array.isArray(eduData) ? eduData : []);
-      }
-
-      // 7. Certifications
-      const certRes = await fetch('/api/certifications');
-      if (certRes.ok) {
-        const certData = await certRes.json();
-        setCertifications(Array.isArray(certData) ? certData : []);
-      }
-
-      // 8. Messages
-      const msgRes = await fetch('/api/messages');
-      if (msgRes.ok) {
-        const msgData = await msgRes.json();
-        setMessages(Array.isArray(msgData) ? msgData : []);
-      }
-
-      // 9. Profile & Live URLs
-      const profRes = await fetch('/api/profile?t=' + Date.now(), { cache: 'no-store' });
-      if (profRes.ok) {
-        const profData = await profRes.json();
-        setProfile(profData);
-      }
-
-      // 10. 2FA Security Status Check
-      if (token) {
-        try {
-          const twoFaRes = await fetch('/api/auth/2fa', { headers });
-          if (twoFaRes.ok) {
-            const twoFaData = await twoFaRes.json();
-            setTwoFactorEnabled(Boolean(twoFaData.twoFactorEnabled));
-            setPasskeyCount(twoFaData.passkeys?.length ?? 0);
-          }
-        } catch (e) {}
-      }
-    } catch (err) {
-      console.error('Failed to load dashboard data:', err);
+      await queryClient.invalidateQueries();
     } finally {
       setIsRefreshing(false);
-      setLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
-  // Strict Authentication Check First: Never show panel before validating
+  // Strict Authentication Check
   useEffect(() => {
-    let isMounted = true;
+    if (typeof window === 'undefined') return;
+    const token = localStorage.getItem('adminToken');
 
-    async function checkAuthAndSetup() {
-      const token = localStorage.getItem('adminToken');
-      const email = localStorage.getItem('adminEmail');
-
-      if (!token) {
-        if (!isMounted) return;
-        setAuthStatus('unauthorized');
-        setStatusMessage('Authentication required. Redirecting to login...');
-        setTimeout(() => {
-          if (isMounted) router.replace('/login');
-        }, 300);
-        return;
-      }
-
-      setStatusMessage('Validating session security credentials...');
-
-      try {
-        const res = await fetch('/api/auth', {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await res.json();
-
-        if (!res.ok || !data.authenticated) {
-          localStorage.removeItem('adminToken');
-          if (!isMounted) return;
-          setAuthStatus('unauthorized');
-          setStatusMessage(
-            data.sessionTerminated
-              ? 'Session expired: Another sign-in occurred from another device. Redirecting to login...'
-              : 'Session invalid or expired. Redirecting to login...'
-          );
-          setTimeout(() => {
-            if (isMounted) router.replace('/login');
-          }, 450);
-          return;
-        }
-
-        if (!isMounted) return;
-        setAdminEmail(data.email || email || 'Admin');
-        setDbConnected(Boolean(data.dbConnected));
-        setAuthStatus('setting_up');
-        setStatusMessage('Setting up the Admin Panel...');
-
-        await loadData();
-
-        if (!isMounted) return;
-        setTimeout(() => {
-          if (isMounted) {
-            setAuthStatus('authorized');
-          }
-        }, 350);
-      } catch (err) {
-        console.error('Auth verification error:', err);
-        if (!isMounted) return;
-        setAuthStatus('unauthorized');
-        setStatusMessage('Security verification failed. Redirecting to login...');
-        setTimeout(() => {
-          if (isMounted) router.replace('/login');
-        }, 350);
-      }
+    if (!token) {
+      setAuthStatus('unauthorized');
+      setStatusMessage('Authentication required. Redirecting to login...');
+      setTimeout(() => router.replace('/login'), 300);
+      return;
     }
 
-    checkAuthAndSetup();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [router, loadData]);
+    if (authData) {
+      if (!authData.authenticated) {
+        localStorage.removeItem('adminToken');
+        setAuthStatus('unauthorized');
+        setStatusMessage(
+          authData.sessionTerminated
+            ? 'Session expired: Another sign-in occurred from another device. Redirecting to login...'
+            : 'Session invalid or expired. Redirecting to login...'
+        );
+        setTimeout(() => router.replace('/login'), 450);
+      } else {
+        setAuthStatus('authorized');
+      }
+    }
+  }, [authData, router]);
 
   const handleLogout = () => {
+    setShowLogoutConfirm(true);
+  };
+
+  const executeLogout = () => {
     localStorage.removeItem('adminToken');
     localStorage.removeItem('adminEmail');
     toast.info('Signed out from Admin Hub');
@@ -239,148 +143,152 @@ export default function AdminDashboardPage() {
     setIsModalOpen(true);
   };
 
-  // If not yet authorized, show the security gate with status messages
+  const appsOnlyCount = apps.filter((a: any) => (a.category || '').toLowerCase() !== 'games').length;
+  const gamesOnlyCount = apps.filter((a: any) => (a.category || '').toLowerCase() === 'games').length;
+  const canAddNew = ['apps', 'games', 'projects', 'skills', 'experience', 'education'].includes(activeTab);
+
+  const tabDescriptions: Record<AdminTab, { title: string; subtitle: string }> = {
+    dashboard: {
+      title: 'Dashboard Overview',
+      subtitle: 'Manage production releases, telemetry, developer portfolio, and security services',
+    },
+    apps: {
+      title: 'Applications overview',
+      subtitle: 'Manage production mobile apps, releases, and play store packages in MongoDB',
+    },
+    games: {
+      title: 'Games Hub overview',
+      subtitle: 'Manage gaming titles, closed testing tracks, game versions, and play console assets',
+    },
+    projects: {
+      title: 'Portfolio Projects',
+      subtitle: 'Showcase web, mobile, and full-stack software development projects',
+    },
+    profile: {
+      title: 'Profile & Identity',
+      subtitle: 'Update your developer bio, headline roles, and social contact handles',
+    },
+    skills: {
+      title: 'Technical Skills Matrix',
+      subtitle: 'Maintain your programming languages, frameworks, and tools matrix',
+    },
+    experience: {
+      title: 'Career Experience',
+      subtitle: 'Curate your career journey, employment history, and engineering accomplishments',
+    },
+    education: {
+      title: 'Education & Credentials',
+      subtitle: 'Manage formal academic degrees and verified technical credentials',
+    },
+    messages: {
+      title: 'Customer Inquiries & Messages',
+      subtitle: 'Review messages and inquiries submitted from the portfolio contact form',
+    },
+  };
+
+  const currentTabInfo = tabDescriptions[activeTab] || tabDescriptions.dashboard;
+
+  // Validation Gate — Core 2.0 styled skeleton frame
   if (authStatus !== 'authorized') {
     return (
-      <div className="min-h-screen w-full bg-[#09090b] flex">
-        {/* Skeleton Sidebar */}
-        <div className="hidden md:flex w-64 shrink-0 flex-col bg-[#0d0e17] border-r border-white/10 p-4 gap-3">
-          {/* Logo area */}
-          <div className="flex items-center gap-3 px-2 py-3 mb-2">
-            <div className="h-8 w-8 rounded-xl bg-white/10 animate-pulse" />
-            <div className="h-4 w-28 rounded-lg bg-white/10 animate-pulse" />
-          </div>
-          {/* Nav items */}
-          {Array.from({ length: 7 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl">
-              <div className="h-4 w-4 rounded-md bg-white/10 animate-pulse shrink-0" />
-              <div className="h-3.5 rounded-lg bg-white/10 animate-pulse" style={{ width: `${55 + (i % 3) * 20}px` }} />
-            </div>
-          ))}
-          {/* Bottom user area */}
-          <div className="mt-auto flex items-center gap-3 px-3 py-2.5">
-            <div className="h-8 w-8 rounded-full bg-white/10 animate-pulse shrink-0" />
-            <div className="flex-1 space-y-1.5">
-              <div className="h-3 w-32 rounded-lg bg-white/10 animate-pulse" />
-              <div className="h-2.5 w-20 rounded-lg bg-white/10 animate-pulse" />
+      <div className="min-h-screen bg-[#EAECEF] dark:bg-[#0A0B10] p-3 sm:p-5 lg:p-7 flex flex-col justify-center">
+        <div className="w-full max-w-[1600px] mx-auto bg-[#F4F5F6] dark:bg-[#11121A] rounded-[36px] border border-gray-200/80 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col lg:flex-row min-h-[calc(100vh-3.5rem)] animate-pulse">
+          {/* Skeleton Sidebar */}
+          <div className="w-full lg:w-72 p-6 border-b lg:border-b-0 lg:border-r border-gray-200/80 dark:border-white/10 space-y-6">
+            <div className="h-10 w-10 rounded-2xl bg-gray-300 dark:bg-white/10" />
+            <div className="space-y-3">
+              <div className="h-10 rounded-xl bg-gray-300 dark:bg-white/10" />
+              <div className="h-8 rounded-xl bg-gray-200 dark:bg-white/5 w-3/4" />
+              <div className="h-8 rounded-xl bg-gray-200 dark:bg-white/5 w-2/3" />
+              <div className="h-8 rounded-xl bg-gray-200 dark:bg-white/5 w-4/5" />
             </div>
           </div>
-        </div>
-
-        {/* Main Content Skeleton */}
-        <div className="flex-1 flex flex-col min-w-0">
-          {/* Header skeleton */}
-          <div className="px-8 py-6 border-b border-white/10 flex items-center justify-between gap-4">
-            <div className="space-y-2">
-              <div className="h-6 w-52 rounded-xl bg-white/10 animate-pulse" />
-              <div className="h-3 w-72 rounded-lg bg-white/10 animate-pulse" />
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="h-7 w-24 rounded-full bg-white/10 animate-pulse" />
-              <div className="h-7 w-28 rounded-full bg-white/10 animate-pulse" />
-              <div className="h-8 w-8 rounded-xl bg-white/10 animate-pulse" />
-              <div className="h-8 w-24 rounded-xl bg-white/10 animate-pulse" />
-            </div>
-          </div>
-
-          {/* Content area skeleton */}
-          <div className="flex-1 p-8 space-y-6 overflow-hidden">
-            {/* Stat cards row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="p-5 rounded-2xl bg-[#12131c] border border-white/10 space-y-3">
-                  <div className="h-3 w-16 rounded-lg bg-white/10 animate-pulse" />
-                  <div className="h-7 w-10 rounded-xl bg-white/10 animate-pulse" />
-                  <div className="h-2.5 w-24 rounded-lg bg-white/10 animate-pulse" />
-                </div>
-              ))}
-            </div>
-            {/* Table / card grid */}
-            <div className="p-6 rounded-2xl bg-[#12131c] border border-white/10 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="h-5 w-40 rounded-xl bg-white/10 animate-pulse" />
-                <div className="h-8 w-24 rounded-xl bg-white/10 animate-pulse" />
-              </div>
-              <div className="h-10 w-full rounded-xl bg-white/10 animate-pulse" />
-              {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex items-center gap-4 py-3 border-t border-white/5">
-                  <div className="h-10 w-10 rounded-xl bg-white/10 animate-pulse shrink-0" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-3.5 rounded-lg bg-white/10 animate-pulse" style={{ width: `${45 + (i % 4) * 15}%` }} />
-                    <div className="h-2.5 w-24 rounded-lg bg-white/10 animate-pulse" />
-                  </div>
-                  <div className="h-6 w-16 rounded-full bg-white/10 animate-pulse" />
-                  <div className="h-8 w-8 rounded-xl bg-white/10 animate-pulse" />
-                </div>
-              ))}
-            </div>
+          {/* Skeleton Content */}
+          <div className="flex-1 p-8 space-y-6">
+            <div className="h-8 w-64 rounded-xl bg-gray-300 dark:bg-white/10" />
+            <div className="h-48 rounded-[28px] bg-white dark:bg-white/5" />
+            <div className="h-96 rounded-[28px] bg-white dark:bg-white/5" />
           </div>
         </div>
       </div>
     );
   }
 
-  const appsOnlyCount = apps.filter((a) => (a.category || '').toLowerCase() !== 'games').length;
-  const gamesOnlyCount = apps.filter((a) => (a.category || '').toLowerCase() === 'games').length;
-
   return (
-    <SidebarProvider defaultOpen={true} className="min-h-screen w-full bg-[#09090b]">
-      {/* Sidebar Navigation */}
-      <Sidebar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        appsCount={appsOnlyCount}
-        gamesCount={gamesOnlyCount}
-        projectsCount={projects.length}
-        messagesCount={messages.length}
-        profile={profile}
-        adminEmail={adminEmail}
-        onLogout={handleLogout}
-      />
-
-      {/* Main Workspace Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top Header */}
-        <Header
+    <div className="h-screen max-h-screen p-3 sm:p-5 lg:p-6 flex flex-col justify-center bg-[#07080D] overflow-hidden">
+      {/* Red & Black Core Framed Window (Sidebar inside the page) */}
+      <div className="w-full max-w-[1600px] mx-auto bg-[#0c0d14] rounded-[28px] border border-white/10 shadow-2xl shadow-black/90 overflow-hidden flex flex-col lg:flex-row h-full max-h-[calc(100vh-2.5rem)]">
+        {/* Integrated Core Sidebar with fixed height and internal scrolling */}
+        <CoreSidebar
           activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          appsCount={appsOnlyCount}
+          gamesCount={gamesOnlyCount}
+          projectsCount={projects.length}
+          messagesCount={messages.length}
+          profile={profile}
           adminEmail={adminEmail}
-          dbConnected={dbConnected}
-          onAddNew={handleAddNew}
-          onRefresh={loadData}
-          isRefreshing={isRefreshing}
-          onOpenSecurity={() => router.push('/settings')}
-          twoFactorEnabled={twoFactorEnabled}
-          passkeyCount={passkeyCount}
-          onAddFingerprint={() => {
-            setIsSecurityModalOpen(true);
-          }}
+          onLogout={handleLogout}
         />
 
-        {/* Tab Content Container */}
-        <main className="flex-1 p-6 sm:p-8 max-w-7xl w-full">
-          {loading ? (
-            <div className="flex items-center justify-center p-20">
-              <div className="h-8 w-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+        {/* Content Area with Section Cards */}
+        <div className="flex-1 flex flex-col min-w-0 p-6 sm:p-8 lg:p-10 space-y-6 overflow-y-auto h-full max-h-full custom-scrollbar">
+          {/* Top Section Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 pb-2">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-2.5">
+                <span>{currentTabInfo.title}</span>
+                <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-400 mt-1 font-medium">
+                {currentTabInfo.subtitle}
+              </p>
             </div>
-          ) : (
-            <>
-              {activeTab === 'dashboard' && (
-                <DashboardManager
-                  adminEmail={adminEmail}
-                  apps={apps}
-                  projects={projects}
-                  skills={skills}
-                  experience={experience}
-                  education={education}
-                  messages={messages}
-                  twoFactorEnabled={twoFactorEnabled}
-                  dbConnected={dbConnected}
-                  onNavigate={(tab) => setActiveTab(tab as AdminTab)}
-                  onOpenSettings={() => router.push('/settings')}
-                />
-              )}
 
-              {activeTab === 'apps' && (
+            <div className="flex items-center gap-3">
+              {/* Refresh Action */}
+              <button
+                onClick={loadData}
+                disabled={isRefreshing}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs font-bold text-white shadow-xs hover:bg-white/10 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <FiRefreshCw className={`h-3.5 w-3.5 text-slate-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
+              </button>
+
+              {/* Quick Action Button (Add New) */}
+              {canAddNew && (
+                <button
+                  onClick={handleAddNew}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-bold shadow-lg shadow-red-950/60 transition-all cursor-pointer"
+                >
+                  <FiPlus className="h-4 w-4" />
+                  <span>Add New</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Active Section Content */}
+          <div className="space-y-6 pb-6">
+            {activeTab === 'dashboard' && (
+              <DashboardManager
+                adminEmail={adminEmail}
+                apps={apps}
+                projects={projects}
+                skills={skills}
+                experience={experience}
+                education={education}
+                messages={messages}
+                twoFactorEnabled={twoFactorEnabled}
+                dbConnected={dbConnected}
+                onNavigate={(tab) => setActiveTab(tab as AdminTab)}
+                onOpenSettings={() => router.push('/settings')}
+              />
+            )}
+
+            {activeTab === 'apps' && (
+              <div className="bg-[#12131c] rounded-2xl p-6 sm:p-8 border border-white/10 shadow-lg">
                 <AppsManager
                   apps={apps}
                   mode="apps"
@@ -388,9 +296,11 @@ export default function AdminDashboardPage() {
                   isModalOpen={isModalOpen}
                   setIsModalOpen={setIsModalOpen}
                 />
-              )}
+              </div>
+            )}
 
-              {activeTab === 'games' && (
+            {activeTab === 'games' && (
+              <div className="bg-[#12131c] rounded-2xl p-6 sm:p-8 border border-white/10 shadow-lg">
                 <AppsManager
                   apps={apps}
                   mode="games"
@@ -398,43 +308,53 @@ export default function AdminDashboardPage() {
                   isModalOpen={isModalOpen}
                   setIsModalOpen={setIsModalOpen}
                 />
-              )}
+              </div>
+            )}
 
-              {activeTab === 'projects' && (
+            {activeTab === 'projects' && (
+              <div className="bg-[#12131c] rounded-2xl p-6 sm:p-8 border border-white/10 shadow-lg">
                 <ProjectsManager
                   projects={projects}
                   onReload={loadData}
                   isModalOpen={isModalOpen}
                   setIsModalOpen={setIsModalOpen}
                 />
-              )}
+              </div>
+            )}
 
-              {activeTab === 'profile' && (
+            {activeTab === 'profile' && (
+              <div className="bg-[#12131c] rounded-2xl p-6 sm:p-8 border border-white/10 shadow-lg">
                 <ProfileManager
                   initialProfile={profile}
-                  onProfileUpdated={(updated) => setProfile(updated)}
+                  onProfileUpdated={() => queryClient.invalidateQueries({ queryKey: ['profile'] })}
                 />
-              )}
+              </div>
+            )}
 
-              {activeTab === 'skills' && (
+            {activeTab === 'skills' && (
+              <div className="bg-[#12131c] rounded-2xl p-6 sm:p-8 border border-white/10 shadow-lg">
                 <SkillsManager
                   skills={skills}
                   onReload={loadData}
                   isModalOpen={isModalOpen}
                   setIsModalOpen={setIsModalOpen}
                 />
-              )}
+              </div>
+            )}
 
-              {activeTab === 'experience' && (
+            {activeTab === 'experience' && (
+              <div className="bg-[#12131c] rounded-2xl p-6 sm:p-8 border border-white/10 shadow-lg">
                 <ExperienceManager
                   experience={experience}
                   onReload={loadData}
                   isModalOpen={isModalOpen}
                   setIsModalOpen={setIsModalOpen}
                 />
-              )}
+              </div>
+            )}
 
-              {activeTab === 'education' && (
+            {activeTab === 'education' && (
+              <div className="bg-[#12131c] rounded-2xl p-6 sm:p-8 border border-white/10 shadow-lg">
                 <EducationManager
                   education={education}
                   certifications={certifications}
@@ -442,22 +362,39 @@ export default function AdminDashboardPage() {
                   isModalOpen={isModalOpen}
                   setIsModalOpen={setIsModalOpen}
                 />
-              )}
+              </div>
+            )}
 
-              {activeTab === 'messages' && (
+            {activeTab === 'messages' && (
+              <div className="bg-[#12131c] rounded-2xl p-6 sm:p-8 border border-white/10 shadow-lg">
                 <MessagesManager messages={messages} onReload={loadData} />
-              )}
-            </>
-          )}
-        </main>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* 2FA & Biometric Security Settings Modal */}
       <SecuritySettingsModal
         isOpen={isSecurityModalOpen}
         onClose={() => setIsSecurityModalOpen(false)}
-        onStatusChange={(enabled) => setTwoFactorEnabled(enabled)}
+        onStatusChange={() => {
+          queryClient.invalidateQueries({ queryKey: ['2fa-status'] });
+          queryClient.invalidateQueries({ queryKey: ['auth'] });
+        }}
       />
-    </SidebarProvider>
+
+      {/* Logout Confirmation Dialog */}
+      <ConfirmDialog
+        open={showLogoutConfirm}
+        onOpenChange={setShowLogoutConfirm}
+        title="Confirm Administrative Logout"
+        description="Are you sure you want to end your active administrative session? You will be returned to the terminal login screen and must authenticate again."
+        confirmLabel="Yes, Sign Out"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={executeLogout}
+      />
+    </div>
   );
 }

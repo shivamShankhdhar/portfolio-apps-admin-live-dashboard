@@ -13,23 +13,26 @@ export const metadata: Metadata = {
   },
 };
 
+import QueryProvider from '@/components/providers/QueryProvider';
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${inter.className} bg-[#09090b] text-slate-100 min-h-screen antialiased bg-developer-grid bg-radial-glow`}>
-        {children}
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className={`${inter.className} bg-[#09090b] text-[#f4f4f5] min-h-screen antialiased`}>
+        <QueryProvider>
+          {children}
+        </QueryProvider>
         <Toaster
           position="top-right"
-          theme="dark"
           richColors
           toastOptions={{
             style: {
-              background: '#12131c',
-              border: '1px solid rgba(220, 38, 38, 0.3)',
+              background: '#1A1D1F',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
               color: '#ffffff',
             },
           }}

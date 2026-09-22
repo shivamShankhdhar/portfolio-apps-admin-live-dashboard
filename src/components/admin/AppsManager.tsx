@@ -17,6 +17,8 @@ import AppModalForm from './AppModalForm';
 import AppIcon from '../ui/AppIcon';
 import { toast } from 'sonner';
 
+import { useSaveApp, useDeleteApp } from '@/hooks/useApps';
+
 interface AppsManagerProps {
   apps: AppItem[];
   onReload: () => void;
@@ -36,6 +38,9 @@ export default function AppsManager({
   const [categoryFilter, setCategoryFilter] = useState<'All' | 'Games' | 'Apps'>('All');
   const [statusFilter, setStatusFilter] = useState<string>('All');
   const [editingApp, setEditingApp] = useState<AppItem | null>(null);
+
+  const saveAppMutation = useSaveApp();
+  const deleteAppMutation = useDeleteApp();
 
   const filteredApps = apps.filter((app) => {
     const isGame = (app.category || '').toLowerCase() === 'games';
@@ -70,29 +75,10 @@ export default function AppsManager({
   };
 
   const handleSave = async (data: Partial<AppItem>) => {
-    if (editingApp && editingApp._id) {
-      // Update existing
-      const res = await fetch(`/api/apps/${editingApp._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to update app');
-      }
-    } else {
-      // Create new
-      const res = await fetch('/api/apps', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to create app');
-      }
-    }
+    await saveAppMutation.mutateAsync({
+      id: editingApp?._id,
+      data,
+    });
     onReload();
   };
 
@@ -101,26 +87,13 @@ export default function AppsManager({
       return;
     }
 
-    try {
-      if (!app._id) {
-        toast.error('Cannot delete item without database ID');
-        return;
-      }
-
-      const res = await fetch(`/api/apps/${app._id}`, {
-        method: 'DELETE',
-      });
-
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || 'Failed to delete app');
-      }
-
-      toast.success(`"${app.title}" removed from database`);
-      onReload();
-    } catch (err: any) {
-      toast.error(err.message || 'Delete operation failed');
+    if (!app._id) {
+      toast.error('Cannot delete item without database ID');
+      return;
     }
+
+    await deleteAppMutation.mutateAsync(app._id);
+    onReload();
   };
 
   const getLiveUrl = (app: AppItem) => {

@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { FiEdit2, FiTrash2, FiExternalLink, FiPlus, FiGithub } from 'react-icons/fi';
 import { toast } from 'sonner';
 import ConfirmDialog from './ConfirmDialog';
+import { useSaveProject, useDeleteProject } from '@/hooks/useProjects';
 
 export interface ProjectItem {
   _id?: string;
@@ -20,7 +21,7 @@ export interface ProjectItem {
 }
 
 interface ProjectsManagerProps {
-  projects: ProjectItem[];
+  projects: any[];
   onReload: () => void;
   isModalOpen: boolean;
   setIsModalOpen: (open: boolean) => void;
@@ -32,11 +33,10 @@ export default function ProjectsManager({
   isModalOpen,
   setIsModalOpen,
 }: ProjectsManagerProps) {
-  const [editingProject, setEditingProject] = useState<ProjectItem | null>(null);
-  const [formData, setFormData] = useState<Partial<ProjectItem>>({
+  const [editingProject, setEditingProject] = useState<any | null>(null);
+  const [formData, setFormData] = useState<any>({
     title: '',
     description: '',
-    technologies: [],
     link: '',
     github: '',
     projectType: 'Web',
@@ -45,12 +45,14 @@ export default function ProjectsManager({
   const [techInput, setTechInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleOpenEdit = (project: ProjectItem) => {
+  const saveProjectMutation = useSaveProject();
+  const deleteProjectMutation = useDeleteProject();
+
+  const handleOpenEdit = (project: any) => {
     setEditingProject(project);
     setFormData(project);
-    setTechInput(project.technologies?.join(', ') || '');
+    setTechInput(project.technologies ? project.technologies.join(', ') : '');
     setIsModalOpen(true);
   };
 
@@ -81,33 +83,20 @@ export default function ProjectsManager({
         ...formData,
         technologies: techInput
           .split(',')
-          .map((t) => t.trim())
+          .map((t: string) => t.trim())
           .filter(Boolean),
         startDate: formData.startDate || new Date().toISOString(),
       };
 
-      if (editingProject && editingProject._id) {
-        const res = await fetch(`/api/projects/${editingProject._id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error('Failed to update project');
-        toast.success('Project updated successfully');
-      } else {
-        const res = await fetch('/api/projects', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error('Failed to create project');
-        toast.success('Project created successfully');
-      }
+      await saveProjectMutation.mutateAsync({
+        id: editingProject?._id,
+        data: payload,
+      });
 
       setIsModalOpen(false);
       onReload();
-    } catch (err: any) {
-      toast.error(err.message || 'Error saving project');
+    } catch {
+      // Error handled by mutation
     } finally {
       setIsSaving(false);
     }
@@ -115,17 +104,12 @@ export default function ProjectsManager({
 
   const handleDelete = async () => {
     if (!deletingProjectId) return;
-    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/projects/${deletingProjectId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete project');
-      toast.success('Project deleted');
+      await deleteProjectMutation.mutateAsync(deletingProjectId);
       setDeletingProjectId(null);
       onReload();
-    } catch (err: any) {
-      toast.error(err.message || 'Error deleting project');
-    } finally {
-      setIsDeleting(false);
+    } catch {
+      // Error handled by mutation
     }
   };
 
@@ -138,84 +122,84 @@ export default function ProjectsManager({
         description="This project will be permanently removed from your portfolio database."
         confirmLabel="Delete Project"
         variant="danger"
-        loading={isDeleting}
+        loading={deleteProjectMutation.isPending}
         onConfirm={handleDelete}
       />
-      <div className="flex justify-between items-center">
-        <h2 className="text-base font-bold text-white">Portfolio Projects ({projects.length})</h2>
+
+      {/* Header Bar */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-base font-bold text-white">Featured Projects ({projects.length})</h2>
+          <p className="text-xs text-slate-400">Manage technical portfolio projects and case studies</p>
+        </div>
         <button
           onClick={handleOpenNew}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white shadow-lg cursor-pointer"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-600/30 transition-all cursor-pointer"
         >
           <FiPlus className="h-4 w-4" />
-          <span>New Project</span>
+          <span>Add Project</span>
         </button>
       </div>
 
+      {/* Projects Grid */}
       {projects.length === 0 ? (
         <div className="p-12 text-center rounded-3xl bg-[#12131c]/50 border border-dashed border-white/10">
           <p className="text-slate-400 text-sm">No portfolio projects currently in database.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {projects.map((p) => (
             <div
-              key={p._id || p.title}
-              className="rounded-3xl bg-[#12131c] border border-red-500/20 p-6 shadow-xl space-y-4"
+              key={p._id}
+              className="p-5 rounded-2xl bg-[#12131c] border border-red-500/20 hover:border-red-500/40 transition-all space-y-3 flex flex-col justify-between"
             >
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <span>{p.title}</span>
-                    {p.featured && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold">
-                        Featured
+              <div className="space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+                    {p.projectType || 'Project'}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleOpenEdit(p)}
+                      className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all cursor-pointer"
+                    >
+                      <FiEdit2 className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => setDeletingProjectId(p._id)}
+                      className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-all cursor-pointer"
+                    >
+                      <FiTrash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-300">{p.description}</p>
+
+                {p.technologies && p.technologies.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {p.technologies.map((t: string, i: number) => (
+                      <span key={i} className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 text-slate-400 border border-white/5">
+                        {t}
                       </span>
-                    )}
-                  </h3>
-                  <span className="text-xs text-red-400 font-medium">{p.projectType || 'Web'}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleOpenEdit(p)}
-                    className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 transition-all cursor-pointer"
-                  >
-                    <FiEdit2 className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => setDeletingProjectId(p._id ?? null)}
-                    className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-all cursor-pointer"
-                  >
-                    <FiTrash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
-              <p className="text-xs text-slate-300">{p.description}</p>
-
-              {p.technologies && p.technologies.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {p.technologies.map((t, i) => (
-                    <span key={i} className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 text-slate-400 border border-white/5">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              <div className="pt-2 border-t border-white/10 flex items-center gap-4 text-xs text-slate-400">
-                {p.link && (
-                  <a href={p.link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-red-400">
-                    <FiExternalLink className="h-3.5 w-3.5" />
-                    <span>Live Demo</span>
-                  </a>
+                    ))}
+                  </div>
                 )}
-                {p.github && (
-                  <a href={p.github} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-red-400">
-                    <FiGithub className="h-3.5 w-3.5" />
-                    <span>GitHub</span>
-                  </a>
-                )}
+
+                <div className="pt-2 border-t border-white/10 flex items-center gap-4 text-xs text-slate-400">
+                  {p.link && (
+                    <a href={p.link} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-red-400">
+                      <FiExternalLink className="h-3.5 w-3.5" />
+                      <span>Live Demo</span>
+                    </a>
+                  )}
+                  {p.github && (
+                    <a href={p.github} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-red-400">
+                      <FiGithub className="h-3.5 w-3.5" />
+                      <span>GitHub</span>
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
           ))}
