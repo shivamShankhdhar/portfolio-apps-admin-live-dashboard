@@ -86,7 +86,7 @@ export default function CoreSidebar({
   const isTabActive = (tab: AdminTab) => !isSettingsRoute && activeTab === tab;
 
   return (
-    <aside className="w-full lg:w-72 shrink-0 p-5 lg:p-6 flex flex-col h-full max-h-screen lg:max-h-[calc(100vh-2.5rem)] bg-[#0c0d14] border-b lg:border-b-0 lg:border-r border-white/10 select-none overflow-hidden">
+    <aside className="w-full lg:w-72 shrink-0 p-5 lg:p-6 flex flex-col h-full max-h-screen lg:h-screen lg:max-h-screen bg-[#0c0d14] border-b lg:border-b-0 lg:border-r border-white/10 select-none overflow-hidden">
       {/* Top Header / Logo (Fixed at top) */}
       <div className="shrink-0 flex items-center justify-between pb-4 border-b border-white/10">
         <Link href="/" className="inline-flex items-center gap-3 group">
@@ -250,7 +250,7 @@ export default function CoreSidebar({
           {portfolioOpen && (
             <div className="relative ml-5 pl-3.5 border-l-2 border-white/10 space-y-1">
               {/* Profile */}
-              <div className="relative">
+              <div className="relative hidden md:block">
                 <span className="absolute -left-[16px] top-1/2 -translate-y-1/2 w-3 h-[2px] bg-white/15 rounded-full" />
                 <button
                   type="button"

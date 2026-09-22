@@ -32,8 +32,8 @@ import {
 } from 'react-icons/fi';
 import { FaFingerprint } from 'react-icons/fa6';
 import { toast } from 'sonner';
-import Sidebar, { AdminTab } from '@/components/admin/Sidebar';
-import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import CoreSidebar from '@/components/admin/CoreSidebar';
+import { AdminTab } from '@/components/admin/Sidebar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import ConfirmDialog from '@/components/admin/ConfirmDialog';
 import { useAuthSession, useChangePassword } from '@/hooks/useAuthSession';
@@ -270,41 +270,30 @@ export default function SettingsPage() {
   // Validation Gate — show skeleton layout instead of black screen
   if (isAuthLoading || !authData?.authenticated) {
     return (
-      <div className="min-h-screen w-full bg-[#09090b] flex">
+      <div className="h-screen w-screen max-w-full bg-[#0c0d14] flex flex-col lg:flex-row overflow-hidden animate-pulse">
         {/* Skeleton Sidebar */}
-        <div className="hidden md:flex w-64 shrink-0 flex-col bg-[#0d0e17] border-r border-white/10 p-4 gap-3">
-          <div className="flex items-center gap-3 px-2 py-3 mb-2">
-            <div className="h-8 w-8 rounded-xl bg-white/10 animate-pulse" />
-            <div className="h-4 w-28 rounded-lg bg-white/10 animate-pulse" />
-          </div>
-          {Array.from({ length: 7 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 px-3 py-2.5 rounded-xl">
-              <div className="h-4 w-4 rounded-md bg-white/10 animate-pulse shrink-0" />
-              <div className="h-3.5 rounded-lg bg-white/10 animate-pulse" style={{ width: `${55 + (i % 3) * 20}px` }} />
-            </div>
-          ))}
-          <div className="mt-auto flex items-center gap-3 px-3 py-2.5">
-            <div className="h-8 w-8 rounded-full bg-white/10 animate-pulse shrink-0" />
-            <div className="flex-1 space-y-1.5">
-              <div className="h-3 w-32 rounded-lg bg-white/10 animate-pulse" />
-              <div className="h-2.5 w-20 rounded-lg bg-white/10 animate-pulse" />
-            </div>
+        <div className="w-full lg:w-72 p-6 border-b lg:border-b-0 lg:border-r border-white/10 space-y-6 bg-[#0c0d14]">
+          <div className="h-10 w-10 rounded-2xl bg-white/10" />
+          <div className="space-y-3">
+            <div className="h-10 rounded-xl bg-white/10" />
+            <div className="h-8 rounded-xl bg-white/5 w-3/4" />
+            <div className="h-8 rounded-xl bg-white/5 w-2/3" />
+            <div className="h-8 rounded-xl bg-white/5 w-4/5" />
           </div>
         </div>
 
         {/* Skeleton Settings Content */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 bg-[#07080D] overflow-y-auto">
           {/* Header */}
           <div className="px-8 py-6 border-b border-white/10 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-white/10 animate-pulse" />
-              <div className="h-9 w-9 rounded-xl bg-white/10 animate-pulse" />
+              <div className="h-9 w-9 rounded-xl bg-white/10" />
               <div className="space-y-2">
-                <div className="h-6 w-48 rounded-xl bg-white/10 animate-pulse" />
-                <div className="h-3 w-64 rounded-lg bg-white/10 animate-pulse" />
+                <div className="h-6 w-48 rounded-xl bg-white/10" />
+                <div className="h-3 w-64 rounded-lg bg-white/10" />
               </div>
             </div>
-            <div className="h-7 w-28 rounded-full bg-white/10 animate-pulse" />
+            <div className="h-7 w-28 rounded-full bg-white/10" />
           </div>
 
           {/* Settings body */}
@@ -312,37 +301,37 @@ export default function SettingsPage() {
             {/* Tabs */}
             <div className="flex gap-2">
               {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-9 rounded-xl bg-white/10 animate-pulse" style={{ width: `${80 + i * 20}px` }} />
+                <div key={i} className="h-9 rounded-xl bg-white/10" style={{ width: `${80 + i * 20}px` }} />
               ))}
             </div>
             {/* Profile card */}
             <div className="p-6 rounded-3xl bg-[#12131c] border border-white/10 space-y-5">
               <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-2xl bg-white/10 animate-pulse shrink-0" />
+                <div className="h-16 w-16 rounded-2xl bg-white/10 shrink-0" />
                 <div className="space-y-2 flex-1">
-                  <div className="h-5 w-40 rounded-xl bg-white/10 animate-pulse" />
-                  <div className="h-3 w-52 rounded-lg bg-white/10 animate-pulse" />
+                  <div className="h-5 w-40 rounded-xl bg-white/10" />
+                  <div className="h-3 w-52 rounded-lg bg-white/10" />
                 </div>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 {Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="p-4 rounded-2xl bg-black/30 border border-white/10 space-y-2">
-                    <div className="h-3 w-16 rounded-lg bg-white/10 animate-pulse" />
-                    <div className="h-4 w-24 rounded-lg bg-white/10 animate-pulse" />
+                    <div className="h-3 w-16 rounded-lg bg-white/10" />
+                    <div className="h-4 w-24 rounded-lg bg-white/10" />
                   </div>
                 ))}
               </div>
             </div>
             {/* Password section */}
             <div className="p-6 rounded-3xl bg-[#12131c] border border-white/10 space-y-4">
-              <div className="h-5 w-36 rounded-xl bg-white/10 animate-pulse" />
+              <div className="h-5 w-36 rounded-xl bg-white/10" />
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="space-y-1.5">
-                  <div className="h-3 w-28 rounded-lg bg-white/10 animate-pulse" />
-                  <div className="h-11 w-full rounded-xl bg-white/10 animate-pulse" />
+                  <div className="h-3 w-28 rounded-lg bg-white/10" />
+                  <div className="h-11 w-full rounded-xl bg-white/10" />
                 </div>
               ))}
-              <div className="h-10 w-40 rounded-xl bg-white/10 animate-pulse" />
+              <div className="h-10 w-40 rounded-xl bg-white/10" />
             </div>
           </div>
         </div>
@@ -351,10 +340,10 @@ export default function SettingsPage() {
   }
 
   return (
-    <SidebarProvider defaultOpen={true} className="min-h-screen w-full bg-[#09090b]">
-      {/* Persistent Sidebar */}
-      <Sidebar
-        activeTab={'apps' as AdminTab}
+    <div className="h-screen w-screen max-w-full bg-[#07080D] flex flex-col lg:flex-row overflow-hidden">
+      {/* Integrated Core Sidebar matching home screen */}
+      <CoreSidebar
+        activeTab={'profile' as AdminTab}
         setActiveTab={(tab: AdminTab) => {
           router.push(`/?tab=${tab}`);
         }}
@@ -364,14 +353,14 @@ export default function SettingsPage() {
         messagesCount={messagesCount}
         profile={profile}
         adminEmail={adminEmail}
-        onLogout={handleLogout}
+        onLogout={() => setShowLogoutConfirm(true)}
+        isSettingsRoute={true}
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto h-full max-h-full custom-scrollbar bg-[#07080D]">
         {/* Top Header */}
         <header className="px-8 py-6 border-b border-red-500/20 bg-[#0d0e17]/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <SidebarTrigger className="md:hidden text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-xl border border-white/10 shrink-0" />
             <Link
               href="/"
               className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white transition-all border border-white/10"
@@ -1191,6 +1180,6 @@ export default function SettingsPage() {
         variant="danger"
         onConfirm={handleLogout}
       />
-    </SidebarProvider>
+    </div>
   );
 }

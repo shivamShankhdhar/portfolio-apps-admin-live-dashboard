@@ -188,51 +188,47 @@ export default function AdminDashboardPage() {
 
   const currentTabInfo = tabDescriptions[activeTab] || tabDescriptions.dashboard;
 
-  // Validation Gate — Core 2.0 styled skeleton frame
+  // Validation Gate — Core styled skeleton frame
   if (authStatus !== 'authorized') {
     return (
-      <div className="min-h-screen bg-[#EAECEF] dark:bg-[#0A0B10] p-3 sm:p-5 lg:p-7 flex flex-col justify-center">
-        <div className="w-full max-w-[1600px] mx-auto bg-[#F4F5F6] dark:bg-[#11121A] rounded-[36px] border border-gray-200/80 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col lg:flex-row min-h-[calc(100vh-3.5rem)] animate-pulse">
-          {/* Skeleton Sidebar */}
-          <div className="w-full lg:w-72 p-6 border-b lg:border-b-0 lg:border-r border-gray-200/80 dark:border-white/10 space-y-6">
-            <div className="h-10 w-10 rounded-2xl bg-gray-300 dark:bg-white/10" />
-            <div className="space-y-3">
-              <div className="h-10 rounded-xl bg-gray-300 dark:bg-white/10" />
-              <div className="h-8 rounded-xl bg-gray-200 dark:bg-white/5 w-3/4" />
-              <div className="h-8 rounded-xl bg-gray-200 dark:bg-white/5 w-2/3" />
-              <div className="h-8 rounded-xl bg-gray-200 dark:bg-white/5 w-4/5" />
-            </div>
+      <div className="h-screen w-screen max-w-full bg-[#0c0d14] flex flex-col lg:flex-row overflow-hidden animate-pulse">
+        {/* Skeleton Sidebar */}
+        <div className="w-full lg:w-72 p-6 border-b lg:border-b-0 lg:border-r border-white/10 space-y-6 bg-[#0c0d14]">
+          <div className="h-10 w-10 rounded-2xl bg-white/10" />
+          <div className="space-y-3">
+            <div className="h-10 rounded-xl bg-white/10" />
+            <div className="h-8 rounded-xl bg-white/5 w-3/4" />
+            <div className="h-8 rounded-xl bg-white/5 w-2/3" />
+            <div className="h-8 rounded-xl bg-white/5 w-4/5" />
           </div>
-          {/* Skeleton Content */}
-          <div className="flex-1 p-8 space-y-6">
-            <div className="h-8 w-64 rounded-xl bg-gray-300 dark:bg-white/10" />
-            <div className="h-48 rounded-[28px] bg-white dark:bg-white/5" />
-            <div className="h-96 rounded-[28px] bg-white dark:bg-white/5" />
-          </div>
+        </div>
+        {/* Skeleton Content */}
+        <div className="flex-1 p-8 space-y-6 bg-[#07080D]">
+          <div className="h-8 w-64 rounded-xl bg-white/10" />
+          <div className="h-48 rounded-2xl bg-white/5" />
+          <div className="h-96 rounded-2xl bg-white/5" />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen max-h-screen p-3 sm:p-5 lg:p-6 flex flex-col justify-center bg-[#07080D] overflow-hidden">
-      {/* Red & Black Core Framed Window (Sidebar inside the page) */}
-      <div className="w-full max-w-[1600px] mx-auto bg-[#0c0d14] rounded-[28px] border border-white/10 shadow-2xl shadow-black/90 overflow-hidden flex flex-col lg:flex-row h-full max-h-[calc(100vh-2.5rem)]">
-        {/* Integrated Core Sidebar with fixed height and internal scrolling */}
-        <CoreSidebar
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          appsCount={appsOnlyCount}
-          gamesCount={gamesOnlyCount}
-          projectsCount={projects.length}
-          messagesCount={messages.length}
-          profile={profile}
-          adminEmail={adminEmail}
-          onLogout={handleLogout}
-        />
+    <div className="h-screen w-screen max-w-full bg-[#07080D] flex flex-col lg:flex-row overflow-hidden">
+      {/* Integrated Core Sidebar taking full height */}
+      <CoreSidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        appsCount={appsOnlyCount}
+        gamesCount={gamesOnlyCount}
+        projectsCount={projects.length}
+        messagesCount={messages.length}
+        profile={profile}
+        adminEmail={adminEmail}
+        onLogout={handleLogout}
+      />
 
-        {/* Content Area with Section Cards */}
-        <div className="flex-1 flex flex-col min-w-0 p-6 sm:p-8 lg:p-10 space-y-6 overflow-y-auto h-full max-h-full custom-scrollbar">
+      {/* Content Area with Section Cards taking full height and remaining width */}
+      <div className="flex-1 flex flex-col min-w-0 p-6 sm:p-8 lg:p-10 space-y-6 overflow-y-auto h-full max-h-full custom-scrollbar bg-[#07080D]">
           {/* Top Section Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 pb-2">
             <div>
@@ -372,7 +368,6 @@ export default function AdminDashboardPage() {
             )}
           </div>
         </div>
-      </div>
 
       {/* 2FA & Biometric Security Settings Modal */}
       <SecuritySettingsModal
