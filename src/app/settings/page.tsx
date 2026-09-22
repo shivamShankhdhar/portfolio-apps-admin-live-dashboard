@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import Sidebar, { AdminTab } from '@/components/admin/Sidebar';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import ConfirmDialog from '@/components/admin/ConfirmDialog';
 
 interface PasskeyDevice {
   credentialId: string;
@@ -96,7 +97,31 @@ export default function SettingsPage() {
 
   // Passkey Setup State
   const [isRegisteringPasskey, setIsRegisteringPasskey] = useState(false);
-  const [passkeyDeviceName, setPasskeyDeviceName] = useState('');
+  const [showPasskeyModal, setShowPasskeyModal] = useState(false);
+  const [detectedDevice, setDetectedDevice] = useState('');
+  const [deletingPasskeyId, setDeletingPasskeyId] = useState<string | null>(null);
+  const [isDeletingPasskey, setIsDeletingPasskey] = useState(false);
+
+  // Auto-detect device name from browser user-agent
+  const detectDeviceName = (): string => {
+    if (typeof window === 'undefined') return 'Unknown Device';
+    const ua = navigator.userAgent;
+    let os = 'Unknown OS';
+    let browser = 'Unknown Browser';
+    if (/iPhone/.test(ua)) os = 'iPhone';
+    else if (/iPad/.test(ua)) os = 'iPad';
+    else if (/Macintosh|Mac OS X/.test(ua)) os = 'MacBook';
+    else if (/Windows NT 10/.test(ua)) os = 'Windows 10';
+    else if (/Windows NT/.test(ua)) os = 'Windows';
+    else if (/Android/.test(ua)) os = 'Android';
+    else if (/Linux/.test(ua)) os = 'Linux';
+    if (/Edg\//.test(ua)) browser = 'Edge';
+    else if (/Chrome\//.test(ua) && !/Chromium/.test(ua)) browser = 'Chrome';
+    else if (/Firefox\//.test(ua)) browser = 'Firefox';
+    else if (/Safari\//.test(ua) && !/Chrome/.test(ua)) browser = 'Safari';
+    else if (/OPR\/|Opera/.test(ua)) browser = 'Opera';
+    return `${os} · ${browser}`;
+  };
 
   // Sidebar Counts State
   const [appsCount, setAppsCount] = useState(0);
@@ -373,78 +398,81 @@ export default function SettingsPage() {
 
       const optRes = await fetch('/api/auth/2fa', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          action: 'passkey-register-options',
-          deviceName: passkeyDeviceName.trim() || 'Admin Biometric Device',
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'passkey-register-options' }),
       });
 
       const optData = await optRes.json();
-      if (!optRes.ok) {
+      if (!optRes.ok || !optData.options) {
         throw new Error(optData.message || 'Failed to prepare registration');
       }
 
-      const challengeBytes = Uint8Array.from(atob(optData.challenge), (c) => c.charCodeAt(0));
-      const userIdBytes = new TextEncoder().encode(adminEmail || 'admin');
+      const { options } = optData;
+
+      // Pure-JS base64url → Uint8Array<ArrayBuffer>: no atob dependency
+      const b64urlToUint8 = (b64url: string): Uint8Array<ArrayBuffer> => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/');
+        const stripped = b64.replace(/=/g, '');
+        const padded = stripped + '==='.slice(0, (4 - (stripped.length % 4)) % 4);
+        const out: number[] = [];
+        for (let i = 0; i < padded.length; i += 4) {
+          const a = chars.indexOf(padded[i]);
+          const b = chars.indexOf(padded[i + 1]);
+          const c = chars.indexOf(padded[i + 2]);
+          const d = chars.indexOf(padded[i + 3]);
+          out.push((a << 2) | (b >> 4));
+          if (padded[i + 2] !== '=') out.push(((b & 0xf) << 4) | (c >> 2));
+          if (padded[i + 3] !== '=') out.push(((c & 0x3) << 6) | d);
+        }
+        const buf = new ArrayBuffer(out.length);
+        const view = new Uint8Array(buf);
+        out.forEach((v, i) => { view[i] = v; });
+        return view as Uint8Array<ArrayBuffer>;
+      };
+
+      const challengeBuffer = b64urlToUint8(options.challenge);
+      const userIdBuffer = b64urlToUint8(options.user.id);
 
       const credential = (await navigator.credentials.create({
         publicKey: {
-          challenge: challengeBytes,
-          rp: { name: 'Portfolio & Apps Admin Hub' },
+          challenge: challengeBuffer,
+          rp: options.rp,
           user: {
-            id: userIdBytes,
-            name: adminEmail,
-            displayName: 'System Administrator',
+            id: userIdBuffer,
+            name: options.user.name,
+            displayName: options.user.displayName,
           },
-          pubKeyCredParams: [
-            { type: 'public-key', alg: -7 },
-            { type: 'public-key', alg: -257 },
-          ],
-          authenticatorSelection: {
-            authenticatorAttachment: 'platform',
-            userVerification: 'preferred',
-          },
-          timeout: 60000,
+          pubKeyCredParams: options.pubKeyCredParams,
+          authenticatorSelection: options.authenticatorSelection,
+          timeout: options.timeout,
+          attestation: options.attestation,
         },
       })) as PublicKeyCredential;
 
-      if (!credential) {
-        throw new Error('Sensor verification was cancelled.');
-      }
+      if (!credential) throw new Error('Sensor verification was cancelled.');
 
-      const rawId = btoa(String.fromCharCode(...new Uint8Array(credential.rawId)));
-      const response = credential.response as AuthenticatorAttestationResponse;
-      const clientDataJSON = btoa(String.fromCharCode(...new Uint8Array(response.clientDataJSON)));
-      const attestationObject = btoa(String.fromCharCode(...new Uint8Array(response.attestationObject)));
+      const rawResponse = credential.response as AuthenticatorAttestationResponse;
+      const clientDataJSON = btoa(String.fromCharCode(...new Uint8Array(rawResponse.clientDataJSON)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 
       const verifyRes = await fetch('/api/auth/2fa', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           action: 'passkey-register-verify',
-          credential: {
-            id: credential.id,
-            rawId,
-            response: { clientDataJSON, attestationObject },
-          },
-          deviceName: passkeyDeviceName.trim() || 'Admin Biometric Device',
+          credentialId: credential.id,
+          clientDataJSON,
+          deviceName: detectedDevice || detectDeviceName(),
         }),
       });
 
       const verifyData = await verifyRes.json();
-      if (!verifyRes.ok) {
-        throw new Error(verifyData.message || 'Failed to verify passkey');
-      }
+      if (!verifyRes.ok) throw new Error(verifyData.message || 'Failed to verify passkey');
 
       toast.success(verifyData.message);
-      setPasskeyDeviceName('');
+      setShowPasskeyModal(false);
+      setDetectedDevice('');
       setTwoFactorEnabled(true);
       await fetch2FAStatus();
     } catch (err: any) {
@@ -459,30 +487,26 @@ export default function SettingsPage() {
   };
 
   // 8. Delete Passkey
-  const handleDeletePasskey = async (credentialId: string) => {
-    if (!confirm('Are you sure you want to remove this passkey device?')) return;
-
+  const handleDeletePasskey = async () => {
+    if (!deletingPasskeyId) return;
+    setIsDeletingPasskey(true);
     try {
       const token = localStorage.getItem('adminToken');
       const res = await fetch('/api/auth/2fa', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          action: 'delete-passkey',
-          credentialId,
-        }),
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'delete-passkey', credentialId: deletingPasskeyId }),
       });
-
       const data = await res.json();
       if (res.ok) {
         toast.success(data.message);
+        setDeletingPasskeyId(null);
         await fetch2FAStatus();
       }
-    } catch (err) {
+    } catch {
       toast.error('Error removing passkey');
+    } finally {
+      setIsDeletingPasskey(false);
     }
   };
 
@@ -1190,31 +1214,30 @@ export default function SettingsPage() {
                   </p>
                 </div>
 
+
                 <div className="p-5 rounded-2xl bg-black/40 border border-white/10 space-y-4">
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <input
-                      type="text"
-                      value={passkeyDeviceName}
-                      onChange={(e) => setPasskeyDeviceName(e.target.value)}
-                      placeholder="Device Name (e.g. MacBook Pro Touch ID)"
-                      className="flex-1 px-4 py-2.5 rounded-xl bg-black/60 border border-white/10 text-white text-xs focus:outline-none focus:border-red-500 font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleRegisterPasskey}
-                      disabled={isRegisteringPasskey}
-                      className="px-5 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 shrink-0"
-                    >
-                      {isRegisteringPasskey ? (
-                        <span>Follow Sensor Prompt...</span>
-                      ) : (
-                        <>
-                          <FaFingerprint className="h-4 w-4" />
-                          <span>Register Passkey</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (passkeys.length >= 3) return;
+                      const name = detectDeviceName();
+                      setDetectedDevice(name);
+                      setShowPasskeyModal(true);
+                    }}
+                    disabled={passkeys.length >= 3}
+                    className="w-full py-3 rounded-xl text-xs font-bold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {passkeys.length >= 3 ? (
+                      <span>Limit Reached (3 max)</span>
+                    ) : (
+                      <><FaFingerprint className="h-4 w-4" /><span>Register Passkey</span></>
+                    )}
+                  </button>
+                  {passkeys.length >= 3 && (
+                    <p className="text-[11px] text-amber-400/80 font-mono text-center">
+                      Maximum of 3 devices allowed. Remove one to add a new device.
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-3">
@@ -1250,7 +1273,7 @@ export default function SettingsPage() {
 
                           <button
                             type="button"
-                            onClick={() => handleDeletePasskey(p.credentialId)}
+                            onClick={() => setDeletingPasskeyId(p.credentialId)}
                             title="Remove Passkey"
                             className="p-2.5 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer"
                           >
@@ -1370,53 +1393,57 @@ export default function SettingsPage() {
         </main>
       </div>
 
-      {/* Confirmation Dialog Before Logout */}
-      {showLogoutConfirm && (
-        <div
-          className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
-          onClick={() => setShowLogoutConfirm(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-3xl bg-[#12131c] border border-red-500/30 p-6 shadow-2xl shadow-red-950/60 space-y-5 text-center relative overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-48 h-24 bg-red-600/20 rounded-full blur-2xl pointer-events-none" />
-
-            <div className="relative mx-auto h-16 w-16 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 shadow-lg shadow-rose-950/40">
-              <FiLogOut className="h-8 w-8" />
-            </div>
-
-            <div className="space-y-1.5 relative z-10">
-              <h3 className="text-base font-bold text-white tracking-tight">
-                Confirm Administrative Logout
-              </h3>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                Are you sure you want to end your active administrative session? You will be returned to the login screen and must authenticate again.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3 pt-2 relative z-10">
-              <button
-                type="button"
-                onClick={() => setShowLogoutConfirm(false)}
-                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowLogoutConfirm(false);
-                  handleLogout();
-                }}
-                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-600/30 transition-all cursor-pointer"
-              >
-                Yes, Sign Out
-              </button>
-            </div>
+      {/* Passkey Registration Confirmation */}
+      <ConfirmDialog
+        open={showPasskeyModal}
+        onOpenChange={(open) => {
+          if (!open) { setShowPasskeyModal(false); setDetectedDevice(''); }
+        }}
+        title="Register Biometric Device"
+        description="Your device will prompt for Touch ID, Face ID, or Windows Hello to register this passkey."
+        confirmLabel={isRegisteringPasskey ? 'Follow device prompt...' : 'Continue with Biometrics'}
+        cancelLabel="Cancel"
+        variant="default"
+        loading={isRegisteringPasskey}
+        onConfirm={handleRegisterPasskey}
+        icon={<FaFingerprint className="h-6 w-6" />}
+      >
+        {/* Device info card */}
+        <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 flex items-center gap-3">
+          <FiCpu className="h-4 w-4 text-slate-400 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[10px] font-mono uppercase tracking-wider text-slate-500">Detected Device</p>
+            <p className="text-sm font-bold text-white truncate mt-0.5">{detectedDevice}</p>
           </div>
         </div>
-      )}
+        <p className="text-[11px] text-slate-500 text-center font-mono mt-1">
+          Slot {passkeys.length + 1} of 3 · Saved as your passkey device name.
+        </p>
+      </ConfirmDialog>
+
+      {/* Passkey Delete Confirmation */}
+      <ConfirmDialog
+        open={!!deletingPasskeyId}
+        onOpenChange={(open) => { if (!open) setDeletingPasskeyId(null); }}
+        title="Remove Biometric Device"
+        description="This passkey will be permanently removed. You will no longer be able to use this device for biometric authentication."
+        confirmLabel="Remove Device"
+        variant="danger"
+        loading={isDeletingPasskey}
+        onConfirm={handleDeletePasskey}
+      />
+
+      {/* Logout Confirmation */}
+      <ConfirmDialog
+        open={showLogoutConfirm}
+        onOpenChange={setShowLogoutConfirm}
+        title="Confirm Administrative Logout"
+        description="Are you sure you want to end your active administrative session? You will be returned to the login screen and must authenticate again."
+        confirmLabel="Yes, Sign Out"
+        cancelLabel="Cancel"
+        variant="danger"
+        onConfirm={handleLogout}
+      />
     </SidebarProvider>
   );
 }

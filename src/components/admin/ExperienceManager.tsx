@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { FiPlus, FiTrash2, FiEdit2, FiBriefcase } from 'react-icons/fi';
 import { toast } from 'sonner';
+import ConfirmDialog from './ConfirmDialog';
 
 export interface ExperienceItem {
   _id?: string;
@@ -37,6 +38,8 @@ export default function ExperienceManager({
   });
   const [techInput, setTechInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingExpId, setDeletingExpId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleOpenNew = () => {
     setEditingExp(null);
@@ -97,20 +100,34 @@ export default function ExperienceManager({
     }
   };
 
-  const handleDelete = async (id?: string) => {
-    if (!id || !confirm('Delete this role?')) return;
+  const handleDelete = async () => {
+    if (!deletingExpId) return;
+    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/experience/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/experience/${deletingExpId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete');
       toast.success('Experience deleted');
+      setDeletingExpId(null);
       onReload();
     } catch (err: any) {
       toast.error(err.message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        open={!!deletingExpId}
+        onOpenChange={(open) => { if (!open) setDeletingExpId(null); }}
+        title="Delete Experience"
+        description="This work experience entry will be permanently removed from your portfolio database."
+        confirmLabel="Delete Role"
+        variant="danger"
+        loading={isDeleting}
+        onConfirm={handleDelete}
+      />
       <div className="flex justify-between items-center">
         <h2 className="text-base font-bold text-white">Work History ({experience.length})</h2>
         <button
@@ -153,7 +170,7 @@ export default function ExperienceManager({
                     <FiEdit2 className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => handleDelete(exp._id)}
+                    onClick={() => setDeletingExpId(exp._id ?? null)}
                     className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300"
                   >
                     <FiTrash2 className="h-4 w-4" />

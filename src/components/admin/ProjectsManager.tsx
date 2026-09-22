@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { FiEdit2, FiTrash2, FiExternalLink, FiPlus, FiGithub } from 'react-icons/fi';
 import { toast } from 'sonner';
+import ConfirmDialog from './ConfirmDialog';
 
 export interface ProjectItem {
   _id?: string;
@@ -43,6 +44,8 @@ export default function ProjectsManager({
   });
   const [techInput, setTechInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleOpenEdit = (project: ProjectItem) => {
     setEditingProject(project);
@@ -110,20 +113,34 @@ export default function ProjectsManager({
     }
   };
 
-  const handleDelete = async (id?: string) => {
-    if (!id || !confirm('Are you sure you want to delete this project?')) return;
+  const handleDelete = async () => {
+    if (!deletingProjectId) return;
+    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/projects/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/projects/${deletingProjectId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete project');
       toast.success('Project deleted');
+      setDeletingProjectId(null);
       onReload();
     } catch (err: any) {
       toast.error(err.message || 'Error deleting project');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        open={!!deletingProjectId}
+        onOpenChange={(open) => { if (!open) setDeletingProjectId(null); }}
+        title="Delete Project"
+        description="This project will be permanently removed from your portfolio database."
+        confirmLabel="Delete Project"
+        variant="danger"
+        loading={isDeleting}
+        onConfirm={handleDelete}
+      />
       <div className="flex justify-between items-center">
         <h2 className="text-base font-bold text-white">Portfolio Projects ({projects.length})</h2>
         <button
@@ -166,7 +183,7 @@ export default function ProjectsManager({
                     <FiEdit2 className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => handleDelete(p._id)}
+                    onClick={() => setDeletingProjectId(p._id ?? null)}
                     className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 transition-all cursor-pointer"
                   >
                     <FiTrash2 className="h-4 w-4" />

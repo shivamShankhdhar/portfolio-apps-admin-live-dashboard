@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { FiPlus, FiTrash2, FiEdit2 } from 'react-icons/fi';
 import { toast } from 'sonner';
+import ConfirmDialog from './ConfirmDialog';
 
 export interface SkillItem {
   _id?: string;
@@ -32,6 +33,8 @@ export default function SkillsManager({
     proficiency: 'Advanced',
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingSkillId, setDeletingSkillId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const handleOpenNew = () => {
     setEditingSkill(null);
@@ -81,20 +84,34 @@ export default function SkillsManager({
     }
   };
 
-  const handleDelete = async (id?: string) => {
-    if (!id || !confirm('Delete this skill?')) return;
+  const handleDelete = async () => {
+    if (!deletingSkillId) return;
+    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/skills/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/skills/${deletingSkillId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete');
       toast.success('Skill deleted');
+      setDeletingSkillId(null);
       onReload();
     } catch (err: any) {
       toast.error(err.message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        open={!!deletingSkillId}
+        onOpenChange={(open) => { if (!open) setDeletingSkillId(null); }}
+        title="Delete Skill"
+        description="This skill will be permanently removed from your database."
+        confirmLabel="Delete Skill"
+        variant="danger"
+        loading={isDeleting}
+        onConfirm={handleDelete}
+      />
       <div className="flex justify-between items-center">
         <h2 className="text-base font-bold text-white">Skills Matrix ({skills.length})</h2>
         <button
@@ -129,8 +146,8 @@ export default function SkillsManager({
                   <FiEdit2 className="h-3.5 w-3.5" />
                 </button>
                 <button
-                  onClick={() => handleDelete(s._id)}
-                  className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300"
+                  onClick={() => setDeletingSkillId(s._id ?? null)}
+                  className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300 cursor-pointer"
                 >
                   <FiTrash2 className="h-3.5 w-3.5" />
                 </button>

@@ -381,6 +381,16 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ message: 'Biometric challenge verification failed or timed out.' }, { status: 400 });
       }
 
+      const admin = await Admin.findOne({ email: adminEmail });
+
+      // Enforce max 3 passkeys
+      if (admin?.passkeys && admin.passkeys.length >= 3) {
+        return NextResponse.json(
+          { message: 'Maximum of 3 fingerprint devices allowed. Please remove one before adding a new device.' },
+          { status: 400 }
+        );
+      }
+
       const newPasskey = {
         credentialId,
         publicKey: publicKey || credentialId,
@@ -389,7 +399,6 @@ export async function POST(request: NextRequest) {
         createdAt: new Date(),
       };
 
-      const admin = await Admin.findOne({ email: adminEmail });
       const currentMethod = admin?.totpVerified ? 'both' : 'passkey';
 
       await Admin.findOneAndUpdate(

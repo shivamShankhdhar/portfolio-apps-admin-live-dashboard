@@ -12,6 +12,7 @@ import SkillsManager from '@/components/admin/SkillsManager';
 import ExperienceManager from '@/components/admin/ExperienceManager';
 import EducationManager from '@/components/admin/EducationManager';
 import MessagesManager from '@/components/admin/MessagesManager';
+import DashboardManager from '@/components/admin/DashboardManager';
 import SecuritySettingsModal from '@/components/admin/SecuritySettingsModal';
 import { AppItem } from '@/lib/defaultData';
 import { toast } from 'sonner';
@@ -22,13 +23,14 @@ export default function AdminDashboardPage() {
   const router = useRouter();
   const [authStatus, setAuthStatus] = useState<AuthStatus>('validating');
   const [statusMessage, setStatusMessage] = useState('Validating Administrative Credentials...');
-  const [activeTab, setActiveTab] = useState<AdminTab>('apps');
+  const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [adminEmail, setAdminEmail] = useState('');
   const [dbConnected, setDbConnected] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
+  const [passkeyCount, setPasskeyCount] = useState(0);
 
   // Database Collections State
   const [apps, setApps] = useState<AppItem[]>([]);
@@ -47,6 +49,7 @@ export default function AdminDashboardPage() {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab') as AdminTab | null;
       const validTabs: AdminTab[] = [
+        'dashboard',
         'apps',
         'games',
         'projects',
@@ -140,6 +143,7 @@ export default function AdminDashboardPage() {
           if (twoFaRes.ok) {
             const twoFaData = await twoFaRes.json();
             setTwoFactorEnabled(Boolean(twoFaData.twoFactorEnabled));
+            setPasskeyCount(twoFaData.passkeys?.length ?? 0);
           }
         } catch (e) {}
       }
@@ -346,6 +350,10 @@ export default function AdminDashboardPage() {
           isRefreshing={isRefreshing}
           onOpenSecurity={() => router.push('/settings')}
           twoFactorEnabled={twoFactorEnabled}
+          passkeyCount={passkeyCount}
+          onAddFingerprint={() => {
+            setIsSecurityModalOpen(true);
+          }}
         />
 
         {/* Tab Content Container */}
@@ -356,6 +364,22 @@ export default function AdminDashboardPage() {
             </div>
           ) : (
             <>
+              {activeTab === 'dashboard' && (
+                <DashboardManager
+                  adminEmail={adminEmail}
+                  apps={apps}
+                  projects={projects}
+                  skills={skills}
+                  experience={experience}
+                  education={education}
+                  messages={messages}
+                  twoFactorEnabled={twoFactorEnabled}
+                  dbConnected={dbConnected}
+                  onNavigate={(tab) => setActiveTab(tab as AdminTab)}
+                  onOpenSettings={() => router.push('/settings')}
+                />
+              )}
+
               {activeTab === 'apps' && (
                 <AppsManager
                   apps={apps}

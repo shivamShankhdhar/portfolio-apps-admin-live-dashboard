@@ -1,8 +1,9 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { FiTrash2, FiMail, FiCalendar } from 'react-icons/fi';
 import { toast } from 'sonner';
+import ConfirmDialog from './ConfirmDialog';
 
 export interface ContactMessage {
   _id: string;
@@ -20,20 +21,38 @@ export default function MessagesManager({
   messages: ContactMessage[];
   onReload: () => void;
 }) {
-  const handleDelete = async (id: string) => {
-    if (!confirm('Delete this message?')) return;
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteConfirmed = async () => {
+    if (!deletingId) return;
+    setIsDeleting(true);
     try {
-      const res = await fetch(`/api/messages/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/messages/${deletingId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete');
       toast.success('Message deleted');
+      setDeletingId(null);
       onReload();
     } catch {
       toast.error('Failed to delete message');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
   return (
     <div className="space-y-6">
+      <ConfirmDialog
+        open={!!deletingId}
+        onOpenChange={(open) => { if (!open) setDeletingId(null); }}
+        title="Delete Message"
+        description="This message will be permanently removed from the database. This action cannot be undone."
+        confirmLabel="Delete Message"
+        variant="danger"
+        loading={isDeleting}
+        onConfirm={handleDeleteConfirmed}
+      />
+
       <h2 className="text-base font-bold text-white flex items-center gap-2">
         <FiMail className="text-red-500" />
         <span>Contact Form Inquiries ({messages.length})</span>
@@ -66,8 +85,8 @@ export default function MessagesManager({
                     <span>{new Date(msg.createdAt).toLocaleDateString()}</span>
                   </span>
                   <button
-                    onClick={() => handleDelete(msg._id)}
-                    className="p-1.5 text-rose-400 hover:text-rose-300 transition-colors"
+                    onClick={() => setDeletingId(msg._id)}
+                    className="p-1.5 text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
                   >
                     <FiTrash2 className="h-4 w-4" />
                   </button>

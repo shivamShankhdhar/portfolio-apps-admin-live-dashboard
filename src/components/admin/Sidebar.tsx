@@ -26,6 +26,7 @@ import {
   Gamepad2,
   Smartphone,
   LayoutGrid,
+  LayoutDashboard,
   User,
   Code2,
   Briefcase,
@@ -38,6 +39,7 @@ import {
 } from 'lucide-react';
 
 export type AdminTab =
+  | 'dashboard'
   | 'apps'
   | 'games'
   | 'projects'
@@ -134,6 +136,15 @@ function AdminSidebarInner({
     count?: number;
     badgeColor?: string;
   }
+
+  const overviewNavItems: NavItem[] = [
+    {
+      id: 'dashboard',
+      label: 'Dashboard',
+      icon: LayoutDashboard,
+      badgeColor: 'bg-red-500/20 text-red-400 border border-red-500/30',
+    },
+  ];
 
   const appsNavItems: NavItem[] = [
     {
@@ -269,6 +280,18 @@ function AdminSidebarInner({
 
         {/* 2. Scrollable Middle Content: Apps Section, Portfolio Section & Live Deployments */}
         <SidebarContent className="px-2 py-3 space-y-4">
+          {/* Overview / Dashboard */}
+          <SidebarGroup className="p-0">
+            <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-wider text-red-400/90 px-2 py-1 group-data-[collapsible=icon]:hidden">
+              Overview
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              {renderNavMenu(overviewNavItems)}
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarSeparator className="bg-white/10" />
+
           {/* Apps Section */}
           <SidebarGroup className="p-0">
             <SidebarGroupLabel className="text-[10px] font-bold uppercase tracking-wider text-red-400/90 px-2 py-1 group-data-[collapsible=icon]:hidden flex items-center justify-between">

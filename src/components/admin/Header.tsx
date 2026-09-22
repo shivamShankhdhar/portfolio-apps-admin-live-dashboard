@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { FiPlus, FiDatabase, FiRefreshCw, FiShield } from 'react-icons/fi';
+import { FaFingerprint } from 'react-icons/fa6';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { AdminTab } from './Sidebar';
 
@@ -15,9 +16,15 @@ interface HeaderProps {
   isRefreshing?: boolean;
   onOpenSecurity?: () => void;
   twoFactorEnabled?: boolean;
+  passkeyCount?: number;
+  onAddFingerprint?: () => void;
 }
 
 const tabTitles: Record<AdminTab, { title: string; subtitle: string }> = {
+  dashboard: {
+    title: 'Admin Dashboard',
+    subtitle: 'Overview of your portfolio, security status, content stats, and recent activity.',
+  },
   apps: {
     title: 'Mobile Applications Management',
     subtitle: 'Manage production mobile apps, releases, and store packages in MongoDB.',
@@ -61,6 +68,8 @@ export default function Header({
   isRefreshing = false,
   onOpenSecurity,
   twoFactorEnabled = false,
+  passkeyCount = 0,
+  onAddFingerprint,
 }: HeaderProps) {
   const current = tabTitles[activeTab] || { title: 'Dashboard', subtitle: '' };
   const canAddNew = ['apps', 'games', 'projects', 'skills', 'experience', 'education'].includes(activeTab);
@@ -119,6 +128,18 @@ export default function Header({
             title="Refresh database records"
           >
             <FiRefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin text-red-400' : ''}`} />
+          </button>
+        )}
+
+        {/* Fingerprint Quick-Add Button — shown when < 3 passkeys registered */}
+        {passkeyCount < 3 && onAddFingerprint && (
+          <button
+            onClick={onAddFingerprint}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border border-violet-500/30 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all cursor-pointer"
+            title={`Add fingerprint / passkey (${passkeyCount}/3 registered)`}
+          >
+            <FaFingerprint className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Add Fingerprint</span>
           </button>
         )}
 

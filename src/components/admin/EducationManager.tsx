@@ -13,6 +13,7 @@ import {
   FiCheck,
 } from 'react-icons/fi';
 import { toast } from 'sonner';
+import ConfirmDialog from './ConfirmDialog';
 
 export interface EducationItem {
   _id?: string;
@@ -102,6 +103,10 @@ export default function EducationManager({
   });
 
   const [isSaving, setIsSaving] = useState(false);
+  const [deletingEduId, setDeletingEduId] = useState<string | null>(null);
+  const [isDeletingEdu, setIsDeletingEdu] = useState(false);
+  const [deletingCertId, setDeletingCertId] = useState<string | null>(null);
+  const [isDeletingCert, setIsDeletingCert] = useState(false);
 
   // Hook to parent "Add New" button in Header
   useEffect(() => {
@@ -191,16 +196,19 @@ export default function EducationManager({
     }
   };
 
-  const handleDeleteEdu = async (id?: string) => {
-    if (!id) return;
-    if (!confirm('Are you sure you want to delete this degree record?')) return;
+  const handleDeleteEdu = async () => {
+    if (!deletingEduId) return;
+    setIsDeletingEdu(true);
     try {
-      const res = await fetch(`/api/education/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/education/${deletingEduId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete degree');
       toast.success('Academic degree removed');
+      setDeletingEduId(null);
       onReload();
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete education record');
+    } finally {
+      setIsDeletingEdu(false);
     }
   };
 
@@ -280,21 +288,46 @@ export default function EducationManager({
     }
   };
 
-  const handleDeleteCert = async (id?: string) => {
-    if (!id) return;
-    if (!confirm('Are you sure you want to delete this certification?')) return;
+  const handleDeleteCert = async () => {
+    if (!deletingCertId) return;
+    setIsDeletingCert(true);
     try {
-      const res = await fetch(`/api/certifications/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/certifications/${deletingCertId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete certification');
       toast.success('Certification removed');
+      setDeletingCertId(null);
       onReload();
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete certification');
+    } finally {
+      setIsDeletingCert(false);
     }
   };
 
   return (
     <div className="space-y-10">
+      {/* Degree Delete Confirmation */}
+      <ConfirmDialog
+        open={!!deletingEduId}
+        onOpenChange={(open) => { if (!open) setDeletingEduId(null); }}
+        title="Delete Academic Degree"
+        description="This degree record will be permanently removed from your portfolio database."
+        confirmLabel="Delete Degree"
+        variant="danger"
+        loading={isDeletingEdu}
+        onConfirm={handleDeleteEdu}
+      />
+      {/* Certification Delete Confirmation */}
+      <ConfirmDialog
+        open={!!deletingCertId}
+        onOpenChange={(open) => { if (!open) setDeletingCertId(null); }}
+        title="Delete Certification"
+        description="This certification will be permanently removed from your portfolio database."
+        confirmLabel="Delete Certification"
+        variant="danger"
+        loading={isDeletingCert}
+        onConfirm={handleDeleteCert}
+      />
       {/* ======================================================== */}
       {/* ACADEMIC DEGREES SECTION */}
       {/* ======================================================== */}
@@ -351,7 +384,7 @@ export default function EducationManager({
                           <FiEdit2 className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => handleDeleteEdu(edu._id)}
+                          onClick={() => setDeletingEduId(edu._id ?? null)}
                           title="Delete Degree"
                           className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/20 transition-all cursor-pointer"
                         >
@@ -446,7 +479,7 @@ export default function EducationManager({
                           <FiEdit2 className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => handleDeleteCert(cert._id)}
+                          onClick={() => setDeletingCertId(cert._id ?? null)}
                           title="Delete Certification"
                           className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/20 transition-all cursor-pointer"
                         >
