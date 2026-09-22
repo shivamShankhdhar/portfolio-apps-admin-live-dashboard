@@ -588,37 +588,40 @@ export default function SecuritySettingsModal({
 
             {/* Register Passkey Trigger Card */}
             <div className="p-4 rounded-2xl bg-black/40 border border-white/10 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 shrink-0">
-                  <FaFingerprint className="h-5 w-5" />
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 shrink-0">
+                    <FaFingerprint className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-white">Biometric Passkey Registration</p>
+                    <p className="text-[11px] text-slate-400">
+                      Touch ID, Face ID, Windows Hello, or FIDO2 Security Keys.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-white">Biometric Passkey Registration</p>
-                  <p className="text-[11px] text-slate-400">
-                    Authenticate instantly with Apple Touch ID, Face ID, Windows Hello, or FIDO2 Security Keys.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  const name = detectDeviceName();
-                  setDetectedDevice(name);
-                  setShowPasskeyModal(true);
-                }}
-                disabled={passkeys.length >= 3}
-                className="w-full py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {passkeys.length >= 3 ? (
-                  <span>Limit Reached (3 max)</span>
+                {passkeys.length < 3 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const name = detectDeviceName();
+                      setDetectedDevice(name);
+                      setShowPasskeyModal(true);
+                    }}
+                    className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-md shadow-red-600/25 transition-all cursor-pointer"
+                  >
+                    <FaFingerprint className="h-3 w-3" />
+                    <span>Add New</span>
+                  </button>
                 ) : (
-                  <><FaFingerprint className="h-3.5 w-3.5" /><span>Register Fingerprint / Passkey</span></>
+                  <span className="shrink-0 text-[10px] font-mono text-amber-400/80 text-right">
+                    Limit<br />Reached
+                  </span>
                 )}
-              </button>
+              </div>
               {passkeys.length >= 3 && (
                 <p className="text-[11px] text-amber-400/80 font-mono">
-                  Maximum of 3 fingerprint / passkey devices allowed. Remove one to register a new device.
+                  Maximum of 3 devices allowed. Remove one to register a new device.
                 </p>
               )}
             </div>

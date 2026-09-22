@@ -131,18 +131,6 @@ export default function Header({
           </button>
         )}
 
-        {/* Fingerprint Quick-Add Button — shown when < 3 passkeys registered */}
-        {passkeyCount < 3 && onAddFingerprint && (
-          <button
-            onClick={onAddFingerprint}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border border-violet-500/30 bg-violet-500/10 text-violet-400 hover:bg-violet-500/20 transition-all cursor-pointer"
-            title={`Add fingerprint / passkey (${passkeyCount}/3 registered)`}
-          >
-            <FaFingerprint className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Add Fingerprint</span>
-          </button>
-        )}
-
         {/* Add New Button */}
         {canAddNew && onAddNew && (
           <button

@@ -101,6 +101,8 @@ export default function SettingsPage() {
   const [detectedDevice, setDetectedDevice] = useState('');
   const [deletingPasskeyId, setDeletingPasskeyId] = useState<string | null>(null);
   const [isDeletingPasskey, setIsDeletingPasskey] = useState(false);
+  const [showDisableTotpConfirm, setShowDisableTotpConfirm] = useState(false);
+  const [isDisablingTotp, setIsDisablingTotp] = useState(false);
 
   // Auto-detect device name from browser user-agent
   const detectDeviceName = (): string => {
@@ -515,6 +517,34 @@ export default function SettingsPage() {
     localStorage.removeItem('adminEmail');
     toast.info('Signed out from Admin Hub');
     router.replace('/login');
+  };
+
+  // Disable / Remove TOTP
+  const handleDisableTotp = async () => {
+    setIsDisablingTotp(true);
+    try {
+      const token = localStorage.getItem('adminToken');
+      const res = await fetch('/api/auth/2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: 'disable-totp' }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message);
+        setTotpVerified(false);
+        setTotpSecret('');
+        setTotpQrCode('');
+        setShowDisableTotpConfirm(false);
+        await fetch2FAStatus();
+      } else {
+        toast.error(data.message || 'Failed to remove authenticator');
+      }
+    } catch {
+      toast.error('Error removing authenticator app');
+    } finally {
+      setIsDisablingTotp(false);
+    }
   };
 
   // Password strength calculation helper
@@ -1103,6 +1133,15 @@ export default function SettingsPage() {
                         </p>
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowDisableTotpConfirm(true)}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 hover:text-rose-300 transition-all cursor-pointer"
+                      title="Remove authenticator app"
+                    >
+                      <FiTrash2 className="h-3 w-3" />
+                      <span>Remove</span>
+                    </button>
                   </div>
                 ) : totpQrCode ? (
                   <div className="p-6 rounded-2xl bg-black/40 border border-white/10 space-y-6 max-w-xl mx-auto">
@@ -1204,41 +1243,32 @@ export default function SettingsPage() {
 
               {/* Option B: Biometric Passkeys */}
               <div className="p-6 sm:p-8 rounded-3xl bg-[#12131c] border border-white/10 space-y-6">
-                <div className="space-y-1 border-b border-white/10 pb-4">
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <FaFingerprint className="h-4 w-4 text-red-400" />
-                    <span>Option B: Biometric Passkeys &amp; Touch ID</span>
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Authenticate instantly with Touch ID, Face ID, Windows Hello, or external security keys.
-                  </p>
-                </div>
-
-
-                <div className="p-5 rounded-2xl bg-black/40 border border-white/10 space-y-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (passkeys.length >= 3) return;
-                      const name = detectDeviceName();
-                      setDetectedDevice(name);
-                      setShowPasskeyModal(true);
-                    }}
-                    disabled={passkeys.length >= 3}
-                    className="w-full py-3 rounded-xl text-xs font-bold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-lg shadow-red-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {passkeys.length >= 3 ? (
-                      <span>Limit Reached (3 max)</span>
-                    ) : (
-                      <><FaFingerprint className="h-4 w-4" /><span>Register Passkey</span></>
-                    )}
-                  </button>
-                  {passkeys.length >= 3 && (
-                    <p className="text-[11px] text-amber-400/80 font-mono text-center">
-                      Maximum of 3 devices allowed. Remove one to add a new device.
+                <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-4">
+                  <div className="space-y-1">
+                    <h3 className="text-base font-bold text-white flex items-center gap-2">
+                      <FaFingerprint className="h-4 w-4 text-red-400" />
+                      <span>Option B: Biometric Passkeys &amp; Touch ID</span>
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Authenticate instantly with Touch ID, Face ID, Windows Hello, or external security keys.
                     </p>
+                  </div>
+                  {passkeys.length < 3 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const name = detectDeviceName();
+                        setDetectedDevice(name);
+                        setShowPasskeyModal(true);
+                      }}
+                      className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white shadow-md shadow-red-600/25 transition-all cursor-pointer"
+                    >
+                      <FaFingerprint className="h-3 w-3" />
+                      <span>Add New</span>
+                    </button>
                   )}
                 </div>
+
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs font-mono">
@@ -1250,7 +1280,7 @@ export default function SettingsPage() {
 
                   {passkeys.length === 0 ? (
                     <div className="p-6 rounded-2xl bg-white/5 border border-white/5 text-center text-xs text-slate-400 font-mono">
-                      No passkeys registered yet. Click &quot;Register Passkey&quot; above to pair your device.
+                      No passkeys registered yet. Use the &quot;Add&quot; button above to pair your device.
                     </div>
                   ) : (
                     <div className="space-y-2.5">
@@ -1392,6 +1422,21 @@ export default function SettingsPage() {
 
         </main>
       </div>
+
+      {/* TOTP Disable Confirmation */}
+      <ConfirmDialog
+        open={showDisableTotpConfirm}
+        onOpenChange={setShowDisableTotpConfirm}
+        title="Remove Authenticator App"
+        description={passkeys.length > 0
+          ? 'The authenticator app will be removed. Your biometric passkeys will still protect your account.'
+          : 'Warning: removing the authenticator app will disable 2FA entirely on your account. Make sure you have a passkey registered first.'}
+        confirmLabel="Remove Authenticator"
+        variant="danger"
+        loading={isDisablingTotp}
+        onConfirm={handleDisableTotp}
+        icon={<FiSmartphone className="h-6 w-6" />}
+      />
 
       {/* Passkey Registration Confirmation */}
       <ConfirmDialog

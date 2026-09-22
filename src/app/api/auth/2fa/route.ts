@@ -466,6 +466,29 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // G. Disable / Remove TOTP (Authenticator App)
+    if (action === 'disable-totp') {
+      const admin = await Admin.findOne({ email: adminEmail });
+      const hasPasskeys = admin?.passkeys && admin.passkeys.length > 0;
+
+      await Admin.findOneAndUpdate(
+        { email: adminEmail },
+        {
+          $set: {
+            totpSecret: null,
+            totpVerified: false,
+            twoFactorEnabled: hasPasskeys ? true : false,
+            twoFactorMethod: hasPasskeys ? 'passkey' : 'totp',
+          },
+        }
+      );
+
+      return NextResponse.json({
+        success: true,
+        message: 'Authenticator app removed. ' + (hasPasskeys ? 'Biometric login is still active.' : '2FA has been disabled.'),
+      });
+    }
+
     return NextResponse.json({ message: 'Invalid 2FA action' }, { status: 400 });
   } catch (error: any) {
     return NextResponse.json({ message: error.message || 'Error processing 2FA request' }, { status: 500 });
