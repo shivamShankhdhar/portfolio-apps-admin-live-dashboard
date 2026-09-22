@@ -91,6 +91,10 @@ const appSchema = new mongoose.Schema(
       },
     ],
     features: [featureSchema],
+    containsAds: {
+      type: Boolean,
+      default: true,
+    },
     featured: {
       type: Boolean,
       default: true,

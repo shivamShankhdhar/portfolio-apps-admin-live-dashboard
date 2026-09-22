@@ -21,6 +21,7 @@ export interface AppItem {
   technologies?: string[];
   highlights?: string[];
   features?: AppFeature[];
+  containsAds?: boolean;
   featured?: boolean;
   order?: number;
   createdAt?: string;
@@ -61,6 +62,7 @@ export const defaultApps: AppItem[] = [
       { label: 'Package Format', value: 'Signed AAB (chess.binge)' },
       { label: 'Play Store Status', value: 'Production (v2.0.2)' },
     ],
+    containsAds: true,
     featured: true,
     order: 1,
   },
@@ -106,6 +108,7 @@ export const defaultApps: AppItem[] = [
       { label: 'Save Format', value: 'ludo-binge-offline-v2' },
       { label: 'Play Store Status', value: 'Closed Testing Track (v1.0.0)' },
     ],
+    containsAds: true,
     featured: true,
     order: 2,
   },
