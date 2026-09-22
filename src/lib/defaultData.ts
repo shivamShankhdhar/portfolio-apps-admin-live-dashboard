@@ -42,7 +42,7 @@ export const defaultApps: AppItem[] = [
     icon: 'chess',
     bannerType: 'chess',
     playStoreUrl: 'https://play.google.com/store/apps/details?id=chess.binge',
-    privacyUrl: '/privacy-policy/chess-binge',
+    privacyUrl: '/apps/games/chess-binge/privacy-policy',
     technologies: ['React Native', 'Expo SDK', 'TypeScript', 'Chess.js Engine', 'Expo Haptics', 'Google Mobile Ads'],
     highlights: [
       '4 Bot Intelligence Tiers (Beginner 800 ELO to Master 2000+ ELO)',
@@ -79,7 +79,7 @@ export const defaultApps: AppItem[] = [
     icon: 'dice',
     bannerType: 'ludo',
     playStoreUrl: 'https://play.google.com/store/apps/details?id=ludo.binge',
-    privacyUrl: '/privacy-policy/ludo-binge',
+    privacyUrl: '/apps/games/ludo-binge/privacy-policy',
     technologies: [
       'React Native',
       'Expo SDK',
