@@ -11,7 +11,7 @@ import {
   FiLayers,
   FiSmartphone,
 } from 'react-icons/fi';
-import { FaGamepad } from 'react-icons/fa6';
+import { FaGamepad, FaGooglePlay, FaApple } from 'react-icons/fa6';
 import { AppItem } from '@/lib/defaultData';
 import AppModalForm from './AppModalForm';
 import AppIcon from '../ui/AppIcon';
@@ -256,6 +256,41 @@ export default function AppsManager({
                   <span className="px-2.5 py-1 rounded-lg bg-black/40 border border-white/5 text-slate-300">
                     Banner: <strong className="text-red-400">{app.bannerType || 'default'}</strong>
                   </span>
+                </div>
+
+                {/* Platform Store Target Badges */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div className="p-2.5 rounded-xl bg-black/30 border border-white/5 flex items-center justify-between text-[11px]">
+                    <span className="flex items-center gap-1.5 text-slate-300">
+                      <FaGooglePlay className="h-3 w-3 text-emerald-400" />
+                      <span>Google Play</span>
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                        app.playStoreUrl
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                          : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                      }`}
+                    >
+                      {app.playStoreUrl ? (app.playStoreStatus || 'Live') : 'Coming Soon'}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-black/30 border border-white/5 flex items-center justify-between text-[11px]">
+                    <span className="flex items-center gap-1.5 text-slate-300">
+                      <FaApple className="h-3 w-3 text-slate-200" />
+                      <span>App Store</span>
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                        app.appStoreUrl
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                          : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                      }`}
+                    >
+                      {app.appStoreUrl ? (app.appStoreStatus || 'Live') : (app.appStoreStatus || 'Coming Soon')}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Technologies */}

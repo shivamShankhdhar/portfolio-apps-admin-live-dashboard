@@ -73,6 +73,21 @@ const appSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    appStoreUrl: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    playStoreStatus: {
+      type: String,
+      default: 'Production',
+      trim: true,
+    },
+    appStoreStatus: {
+      type: String,
+      default: 'Coming Soon',
+      trim: true,
+    },
     privacyUrl: {
       type: String,
       default: '',

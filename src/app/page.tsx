@@ -25,6 +25,7 @@ export default function AdminDashboardPage() {
   // Database Collections State
   const [apps, setApps] = useState<AppItem[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
+  const [profile, setProfile] = useState<any>(null);
   const [skills, setSkills] = useState<any[]>([]);
   const [experience, setExperience] = useState<any[]>([]);
   const [education, setEducation] = useState<any[]>([]);
@@ -102,6 +103,13 @@ export default function AdminDashboardPage() {
         const msgData = await msgRes.json();
         setMessages(Array.isArray(msgData) ? msgData : []);
       }
+
+      // 9. Profile & Live URLs
+      const profRes = await fetch('/api/profile?t=' + Date.now(), { cache: 'no-store' });
+      if (profRes.ok) {
+        const profData = await profRes.json();
+        setProfile(profData);
+      }
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
@@ -134,6 +142,7 @@ export default function AdminDashboardPage() {
         appsCount={apps.length}
         projectsCount={projects.length}
         messagesCount={messages.length}
+        profile={profile}
         onLogout={handleLogout}
       />
 
@@ -175,7 +184,12 @@ export default function AdminDashboardPage() {
                 />
               )}
 
-              {activeTab === 'profile' && <ProfileManager />}
+              {activeTab === 'profile' && (
+                <ProfileManager
+                  initialProfile={profile}
+                  onProfileUpdated={(updated) => setProfile(updated)}
+                />
+              )}
 
               {activeTab === 'skills' && (
                 <SkillsManager
@@ -200,6 +214,8 @@ export default function AdminDashboardPage() {
                   education={education}
                   certifications={certifications}
                   onReload={loadData}
+                  isModalOpen={isModalOpen}
+                  setIsModalOpen={setIsModalOpen}
                 />
               )}
 

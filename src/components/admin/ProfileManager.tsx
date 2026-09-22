@@ -4,26 +4,42 @@ import React, { useState, useEffect } from 'react';
 import { FiSave, FiUser, FiLinkedin, FiGithub, FiMail, FiCheck } from 'react-icons/fi';
 import { toast } from 'sonner';
 
-export default function ProfileManager() {
-  const [profile, setProfile] = useState<any>({
+interface ProfileManagerProps {
+  initialProfile?: any;
+  onProfileUpdated?: (updated: any) => void;
+}
+
+export default function ProfileManager({ initialProfile, onProfileUpdated }: ProfileManagerProps = {}) {
+  const [profile, setProfile] = useState<any>(initialProfile || {
     name: '',
     bio: '',
     email: '',
     linkedinUrl: '',
     githubUrl: '',
+    portfolioUrl: '',
+    appsUrl: '',
+    adminUrl: '',
     roles: [],
     available: true,
   });
-  const [rolesInput, setRolesInput] = useState('');
+  const [rolesInput, setRolesInput] = useState(initialProfile?.roles?.join(', ') || '');
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    fetch('/api/profile')
+    if (initialProfile) {
+      setProfile(initialProfile);
+      setRolesInput(initialProfile.roles?.join(', ') || '');
+    }
+  }, [initialProfile]);
+
+  useEffect(() => {
+    fetch('/api/profile?t=' + Date.now(), { cache: 'no-store' })
       .then((res) => res.json())
       .then((data) => {
         if (data) {
           setProfile(data);
           setRolesInput(data.roles?.join(', ') || '');
+          onProfileUpdated?.(data);
         }
       })
       .catch(() => {});
@@ -37,7 +53,7 @@ export default function ProfileManager() {
         ...profile,
         roles: rolesInput
           .split(',')
-          .map((r) => r.trim())
+          .map((r: string) => r.trim())
           .filter(Boolean),
       };
 
@@ -48,6 +64,12 @@ export default function ProfileManager() {
       });
 
       if (!res.ok) throw new Error('Failed to update profile');
+      const updated = await res.json();
+      setProfile(updated);
+      onProfileUpdated?.(updated);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('profileUpdated', { detail: updated }));
+      }
       toast.success('Profile details updated successfully');
     } catch (err: any) {
       toast.error(err.message || 'Error saving profile');
@@ -136,6 +158,60 @@ export default function ProfileManager() {
               className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-red-500"
             />
           </div>
+        </div>
+
+        {/* Live Ecosystem Deployment URLs (Controlled via Backend) */}
+        <div className="p-4 rounded-2xl bg-black/30 border border-white/10 space-y-3">
+          <div className="flex items-center justify-between border-b border-white/10 pb-2">
+            <span className="text-xs font-mono uppercase tracking-wider text-slate-300 font-bold">
+              Live Ecosystem Deployment URLs (Backend Controlled)
+            </span>
+            <span className="text-[10px] font-mono text-emerald-400">Controls Cross-Site Links</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">
+                Portfolio Live URL
+              </label>
+              <input
+                type="url"
+                value={profile.portfolioUrl || ''}
+                onChange={(e) => setProfile({ ...profile, portfolioUrl: e.target.value })}
+                placeholder="http://localhost:3000 or https://..."
+                className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-red-500 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">
+                Mobile Apps Hub Live URL
+              </label>
+              <input
+                type="url"
+                value={profile.appsUrl || ''}
+                onChange={(e) => setProfile({ ...profile, appsUrl: e.target.value })}
+                placeholder="http://localhost:3002 or https://..."
+                className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-red-500 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">
+                Admin Portal URL
+              </label>
+              <input
+                type="url"
+                value={profile.adminUrl || ''}
+                onChange={(e) => setProfile({ ...profile, adminUrl: e.target.value })}
+                placeholder="http://localhost:3003 or https://..."
+                className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-red-500 font-mono"
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-slate-400">
+            Updating these URLs controls where external and navigation links point across the Portfolio, Mobile Apps Hub, and Admin Portal.
+          </p>
         </div>
 
         <div className="pt-2">

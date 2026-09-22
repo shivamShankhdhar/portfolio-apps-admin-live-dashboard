@@ -32,6 +32,7 @@ interface SidebarProps {
   projectsCount: number;
   messagesCount: number;
   onLogout: () => void;
+  profile?: any;
 }
 
 export default function Sidebar({
@@ -41,7 +42,66 @@ export default function Sidebar({
   projectsCount,
   messagesCount,
   onLogout,
+  profile,
 }: SidebarProps) {
+  const [siteUrls, setSiteUrls] = React.useState<{ portfolioUrl: string; appsUrl: string }>({
+    portfolioUrl: profile?.portfolioUrl || process.env.NEXT_PUBLIC_PORTFOLIO_URL || 'http://localhost:3000',
+    appsUrl: profile?.appsUrl || process.env.NEXT_PUBLIC_APPS_URL || 'http://localhost:3002',
+  });
+
+  // Sync when profile prop changes
+  React.useEffect(() => {
+    if (profile?.portfolioUrl || profile?.appsUrl) {
+      setSiteUrls({
+        portfolioUrl: profile.portfolioUrl || process.env.NEXT_PUBLIC_PORTFOLIO_URL || 'http://localhost:3000',
+        appsUrl: profile.appsUrl || process.env.NEXT_PUBLIC_APPS_URL || 'http://localhost:3002',
+      });
+    }
+  }, [profile?.portfolioUrl, profile?.appsUrl]);
+
+  // Sync on initial mount & profileUpdated event
+  React.useEffect(() => {
+    const fetchLatestProfile = () => {
+      fetch('/api/profile?t=' + Date.now(), { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data) {
+            setSiteUrls({
+              portfolioUrl: data.portfolioUrl || process.env.NEXT_PUBLIC_PORTFOLIO_URL || 'http://localhost:3000',
+              appsUrl: data.appsUrl || process.env.NEXT_PUBLIC_APPS_URL || 'http://localhost:3002',
+            });
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchLatestProfile();
+
+    const handleProfileUpdated = (e: any) => {
+      const data = e.detail;
+      if (data) {
+        setSiteUrls({
+          portfolioUrl: data.portfolioUrl || process.env.NEXT_PUBLIC_PORTFOLIO_URL || 'http://localhost:3000',
+          appsUrl: data.appsUrl || process.env.NEXT_PUBLIC_APPS_URL || 'http://localhost:3002',
+        });
+      }
+    };
+
+    window.addEventListener('profileUpdated', handleProfileUpdated);
+    return () => window.removeEventListener('profileUpdated', handleProfileUpdated);
+  }, []);
+
+  const portfolioLiveUrl =
+    siteUrls.portfolioUrl ||
+    profile?.portfolioUrl ||
+    process.env.NEXT_PUBLIC_PORTFOLIO_URL ||
+    'http://localhost:3000';
+
+  const appsLiveUrl =
+    siteUrls.appsUrl ||
+    profile?.appsUrl ||
+    process.env.NEXT_PUBLIC_APPS_URL ||
+    'http://localhost:3002';
   const navItems = [
     {
       id: 'apps' as AdminTab,
@@ -134,33 +194,33 @@ export default function Sidebar({
         </nav>
 
         {/* Live Sites External Links */}
-        <div className="pt-4 border-t border-white/10 space-y-2">
+        <div className="pt-4 border-t border-white/10 space-y-1.5">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 px-2">
             Live Deployments
           </p>
           <a
-            href={process.env.NEXT_PUBLIC_PORTFOLIO_URL || 'http://localhost:3000'}
+            href={portfolioLiveUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between px-3 py-2 rounded-xl text-xs text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+            className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/10 transition-all group cursor-pointer"
           >
-            <span className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
-              <span>Portfolio (3000)</span>
+            <span className="flex items-center gap-2.5">
+              <span className="h-2 w-2 rounded-full bg-emerald-400 shrink-0 shadow-xs shadow-emerald-400/50" />
+              <span>Portfolio Website</span>
             </span>
-            <FiExternalLink className="h-3.5 w-3.5 text-slate-500" />
+            <FiExternalLink className="h-3.5 w-3.5 text-slate-500 group-hover:text-emerald-400 transition-colors shrink-0" />
           </a>
           <a
-            href={process.env.NEXT_PUBLIC_APPS_URL || 'http://localhost:3002'}
+            href={appsLiveUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center justify-between px-3 py-2 rounded-xl text-xs text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+            className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/5 border border-transparent hover:border-white/10 transition-all group cursor-pointer"
           >
-            <span className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-red-400" />
-              <span>Apps Hub (3002)</span>
+            <span className="flex items-center gap-2.5">
+              <span className="h-2 w-2 rounded-full bg-red-400 shrink-0 shadow-xs shadow-red-400/50" />
+              <span>Apps Website</span>
             </span>
-            <FiExternalLink className="h-3.5 w-3.5 text-slate-500" />
+            <FiExternalLink className="h-3.5 w-3.5 text-slate-500 group-hover:text-red-400 transition-colors shrink-0" />
           </a>
         </div>
       </div>

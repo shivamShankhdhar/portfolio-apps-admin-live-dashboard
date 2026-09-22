@@ -17,6 +17,9 @@ export interface AppItem {
   icon?: string;
   bannerType?: string;
   playStoreUrl?: string;
+  appStoreUrl?: string;
+  playStoreStatus?: string;
+  appStoreStatus?: string;
   privacyUrl?: string;
   technologies?: string[];
   highlights?: string[];
@@ -42,6 +45,9 @@ export const defaultApps: AppItem[] = [
     icon: 'chess',
     bannerType: 'chess',
     playStoreUrl: 'https://play.google.com/store/apps/details?id=chess.binge',
+    playStoreStatus: 'Production',
+    appStoreUrl: '',
+    appStoreStatus: 'Coming Soon',
     privacyUrl: '/apps/games/chess-binge/privacy-policy',
     technologies: ['React Native', 'Expo SDK', 'TypeScript', 'Chess.js Engine', 'Expo Haptics', 'Google Mobile Ads'],
     highlights: [
@@ -79,6 +85,9 @@ export const defaultApps: AppItem[] = [
     icon: 'dice',
     bannerType: 'ludo',
     playStoreUrl: 'https://play.google.com/store/apps/details?id=ludo.binge',
+    playStoreStatus: 'Closed Testing Track',
+    appStoreUrl: '',
+    appStoreStatus: 'Coming Soon',
     privacyUrl: '/apps/games/ludo-binge/privacy-policy',
     technologies: [
       'React Native',

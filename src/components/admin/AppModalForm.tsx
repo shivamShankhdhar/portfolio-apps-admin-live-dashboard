@@ -31,6 +31,9 @@ export default function AppModalForm({
     icon: '🎮',
     bannerType: 'default',
     playStoreUrl: '',
+    playStoreStatus: 'Google Play Production',
+    appStoreUrl: '',
+    appStoreStatus: 'Coming Soon',
     privacyUrl: '',
     technologies: [],
     highlights: [],
@@ -64,6 +67,9 @@ export default function AppModalForm({
         icon: '🎲',
         bannerType: 'ludo',
         playStoreUrl: '',
+        playStoreStatus: 'Closed Testing Track',
+        appStoreUrl: '',
+        appStoreStatus: 'Coming Soon',
         privacyUrl: '',
         technologies: ['React Native', 'TypeScript'],
         highlights: [],
@@ -318,29 +324,93 @@ export default function AppModalForm({
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
-                Google Play Store URL
-              </label>
-              <input
-                type="url"
-                value={formData.playStoreUrl || ''}
-                onChange={(e) => setFormData({ ...formData, playStoreUrl: e.target.value })}
-                placeholder="https://play.google.com/store/apps/details?id=..."
-                className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-red-500 text-xs font-mono"
-              />
+          {/* Store Links & Distribution Status */}
+          <div className="p-4 rounded-2xl bg-black/30 border border-white/10 space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              <span className="text-xs font-mono uppercase tracking-wider text-slate-300 font-bold">
+                Platform Distribution & Store Targets
+              </span>
+              <span className="text-[10px] font-mono text-slate-400">Admin Control</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Google Play URL */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
+                  Google Play Store URL
+                </label>
+                <input
+                  type="url"
+                  value={formData.playStoreUrl || ''}
+                  onChange={(e) => setFormData({ ...formData, playStoreUrl: e.target.value })}
+                  placeholder="https://play.google.com/store/apps/details?id=..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-red-500 text-xs font-mono"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">Leave empty to show &quot;Coming Soon&quot; QR on web</p>
+              </div>
+
+              {/* Google Play Status */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
+                  Google Play Status
+                </label>
+                <select
+                  value={formData.playStoreStatus || 'Google Play Production'}
+                  onChange={(e) => setFormData({ ...formData, playStoreStatus: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#181926] border border-white/10 text-white text-sm focus:outline-none focus:border-red-500"
+                >
+                  <option value="Google Play Production">Google Play Production</option>
+                  <option value="Closed Testing Track">Closed Testing Track</option>
+                  <option value="Open Beta / Testing">Open Beta / Testing</option>
+                  <option value="Pre-Registration">Pre-Registration</option>
+                  <option value="Coming Soon">Coming Soon</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Apple App Store URL */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
+                  Apple App Store / TestFlight URL
+                </label>
+                <input
+                  type="url"
+                  value={formData.appStoreUrl || ''}
+                  onChange={(e) => setFormData({ ...formData, appStoreUrl: e.target.value })}
+                  placeholder="https://apps.apple.com/app/... or TestFlight link"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-red-500 text-xs font-mono"
+                />
+                <p className="text-[10px] text-slate-500 mt-1">Leave empty to show &quot;Coming Soon&quot; QR on web</p>
+              </div>
+
+              {/* Apple App Store Status */}
+              <div>
+                <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
+                  Apple App Store Status
+                </label>
+                <select
+                  value={formData.appStoreStatus || 'Coming Soon'}
+                  onChange={(e) => setFormData({ ...formData, appStoreStatus: e.target.value })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#181926] border border-white/10 text-white text-sm focus:outline-none focus:border-red-500"
+                >
+                  <option value="Coming Soon">Coming Soon</option>
+                  <option value="In Development">In Development</option>
+                  <option value="TestFlight Beta">TestFlight Beta</option>
+                  <option value="Live on App Store">Live on App Store</option>
+                </select>
+              </div>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-300 uppercase mb-1">
-                Privacy Policy URL
+                Privacy Policy Route
               </label>
               <input
                 type="text"
                 value={formData.privacyUrl || ''}
                 onChange={(e) => setFormData({ ...formData, privacyUrl: e.target.value })}
-                placeholder="/privacy-policy/ludo-binge"
+                placeholder="/apps/games/ludo-binge/privacy-policy"
                 className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-red-500 text-xs font-mono"
               />
             </div>
