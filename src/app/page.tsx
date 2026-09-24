@@ -47,7 +47,7 @@ export default function AdminDashboardPage() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // TanStack Query Hooks
-  const { data: authData, isLoading: isAuthLoading } = useAuthSession();
+  const { data: authData, isLoading: isAuthLoading, isFetching: isAuthFetching } = useAuthSession();
   const { data: twoFactorData } = useTwoFactorStatus();
   const { data: apps = [] } = useApps();
   const { data: projects = [] } = useProjects();
@@ -112,6 +112,11 @@ export default function AdminDashboardPage() {
       return;
     }
 
+    // Do NOT evaluate or kick out while auth session verification is in progress
+    if (isAuthLoading || isAuthFetching) {
+      return;
+    }
+
     if (authData) {
       if (!authData.authenticated) {
         localStorage.removeItem('adminToken');
@@ -126,7 +131,7 @@ export default function AdminDashboardPage() {
         setAuthStatus('authorized');
       }
     }
-  }, [authData, router]);
+  }, [authData, isAuthLoading, isAuthFetching, router]);
 
   const handleLogout = () => {
     setShowLogoutConfirm(true);

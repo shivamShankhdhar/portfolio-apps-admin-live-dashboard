@@ -16,14 +16,20 @@ export default function ProfileManager({ initialProfile, onProfileUpdated }: Pro
   const updateProfileMutation = useUpdateProfile();
 
   const [profile, setProfile] = useState<any>(initialProfile || {
-    name: '',
+    name: 'Shivam Shankhdhar',
     bio: '',
-    email: '',
+    email: 'er.shivam1214@gmail.com',
+    phone: '+91 8448967919',
+    location: 'Bareilly, Uttar Pradesh, India',
+    yearsExperience: '3+',
+    projectsCompleted: '20+',
+    happyClients: '100%',
+    headlineQuote: 'Engineering is not merely writing code to make things work; it is designing resilient architectures that endure under load and craft experiences users love.',
     linkedinUrl: '',
     githubUrl: '',
-    portfolioUrl: '',
-    appsUrl: '',
-    adminUrl: '',
+    portfolioUrl: 'https://www.shivamshankhdhar.online',
+    appsUrl: 'https://www.apps.shivamshankhdhar.online',
+    adminUrl: 'https://www.admin.shivamshankhdhar.online',
     roles: [],
     available: true,
   });
@@ -33,7 +39,10 @@ export default function ProfileManager({ initialProfile, onProfileUpdated }: Pro
   useEffect(() => {
     const active = queryProfile || initialProfile;
     if (active) {
-      setProfile(active);
+      setProfile((prev: any) => ({
+        ...prev,
+        ...active,
+      }));
       setRolesInput(active.roles?.join(', ') || '');
     }
   }, [queryProfile, initialProfile]);
@@ -141,6 +150,98 @@ export default function ProfileManager({ initialProfile, onProfileUpdated }: Pro
               value={profile.githubUrl || ''}
               onChange={(e) => setProfile({ ...profile, githubUrl: e.target.value })}
               className="w-full px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-white text-sm focus:outline-none focus:border-red-500"
+            />
+          </div>
+        </div>
+
+        {/* Showcase Metrics & Quote Controls (Matches Reference Design) */}
+        <div className="p-4 rounded-2xl bg-black/30 border border-white/10 space-y-3">
+          <div className="flex items-center justify-between border-b border-white/10 pb-2">
+            <span className="text-xs font-mono uppercase tracking-wider text-slate-300 font-bold">
+              Showcase Metrics, Quote & Contact Details
+            </span>
+            <span className="text-[10px] font-mono text-red-400">Featured On Homepage</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">
+                Years Experience
+              </label>
+              <input
+                type="text"
+                value={profile.yearsExperience || ''}
+                onChange={(e) => setProfile({ ...profile, yearsExperience: e.target.value })}
+                placeholder="3+"
+                className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-red-500 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">
+                Projects Completed
+              </label>
+              <input
+                type="text"
+                value={profile.projectsCompleted || ''}
+                onChange={(e) => setProfile({ ...profile, projectsCompleted: e.target.value })}
+                placeholder="20+"
+                className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-red-500 font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">
+                Stat 3 / Happy Clients
+              </label>
+              <input
+                type="text"
+                value={profile.happyClients || ''}
+                onChange={(e) => setProfile({ ...profile, happyClients: e.target.value })}
+                placeholder="100% or 15+"
+                className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-red-500 font-mono"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">
+                Location
+              </label>
+              <input
+                type="text"
+                value={profile.location || ''}
+                onChange={(e) => setProfile({ ...profile, location: e.target.value })}
+                placeholder="Bareilly, Uttar Pradesh, India"
+                className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-red-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">
+                Contact Phone
+              </label>
+              <input
+                type="text"
+                value={profile.phone || ''}
+                onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                placeholder="+91 8448967919"
+                className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-red-500"
+              />
+            </div>
+          </div>
+
+          <div className="pt-1">
+            <label className="block text-[11px] font-bold text-slate-300 uppercase mb-1">
+              Inspirational Headline Quote (Portfolio)
+            </label>
+            <input
+              type="text"
+              value={profile.headlineQuote || ''}
+              onChange={(e) => setProfile({ ...profile, headlineQuote: e.target.value })}
+              placeholder="Engineering is not merely writing code to make things work; it is designing resilient architectures that endure under load and craft experiences users love."
+              className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-red-500"
             />
           </div>
         </div>

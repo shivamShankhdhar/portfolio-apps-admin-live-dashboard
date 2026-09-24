@@ -58,7 +58,7 @@ export default function SettingsPage() {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // TanStack Query Hooks
-  const { data: authData, isLoading: isAuthLoading } = useAuthSession();
+  const { data: authData, isLoading: isAuthLoading, isFetching: isAuthFetching } = useAuthSession();
   const { data: twoFactorData } = useTwoFactorStatus();
   const { data: apps = [] } = useApps();
   const { data: projects = [] } = useProjects();
@@ -129,6 +129,7 @@ export default function SettingsPage() {
   }, [router]);
 
   useEffect(() => {
+    if (isAuthLoading || isAuthFetching) return;
     if (authData && !authData.authenticated) {
       localStorage.removeItem('adminToken');
       if (authData.sessionTerminated) {
@@ -136,7 +137,7 @@ export default function SettingsPage() {
       }
       router.replace('/login');
     }
-  }, [authData, router]);
+  }, [authData, isAuthLoading, isAuthFetching, router]);
 
   // 1. Change Password Handler
   const handleChangePassword = async (e: React.FormEvent) => {

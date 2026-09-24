@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
@@ -31,17 +32,38 @@ export interface AuthSessionResponse {
   adminDetails: AdminDetails | null;
 }
 
-function getAuthHeader(): Record<string, string> {
-  const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+function getAuthHeader(token?: string | null): Record<string, string> {
+  const activeToken = token || (typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null);
+  return activeToken ? { Authorization: `Bearer ${activeToken}` } : {};
 }
 
 export function useAuthSession(options?: { enabled?: boolean }) {
+  const [token, setToken] = useState<string | null>(null);
+  const [hasMounted, setHasMounted] = useState(false);
+
+  useEffect(() => {
+    setHasMounted(true);
+    setToken(localStorage.getItem('adminToken'));
+  }, []);
+
   return useQuery<AuthSessionResponse>({
-    queryKey: ['auth'],
+    queryKey: ['auth', token],
     queryFn: async () => {
+      const activeToken = token || (typeof window !== 'undefined' ? localStorage.getItem('adminToken') : null);
+      if (!activeToken) {
+        return {
+          authenticated: false,
+          email: '',
+          adminEmail: '',
+          dbConfigured: false,
+          dbConnected: false,
+          smtpConfigured: false,
+          adminDetails: null,
+        };
+      }
+
       const res = await fetch('/api/auth', {
-        headers: getAuthHeader(),
+        headers: getAuthHeader(activeToken),
       });
       const data = await res.json();
       if (!res.ok && data.sessionTerminated) {
@@ -49,7 +71,8 @@ export function useAuthSession(options?: { enabled?: boolean }) {
       }
       return data;
     },
-    enabled: options?.enabled !== false,
+    enabled: options?.enabled !== false && hasMounted && Boolean(token),
+    staleTime: 5000,
   });
 }
 
